@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kokoro Reader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#171220;          /* plum-black ground */
+    --raise:#211A2C;        /* panels, transport */
+    --edge:#322943;         /* hairlines */
+    --bone:#EDE6DB;         /* reading text */
+    --mute:#857A94;         /* labels, unread */
+    --amber:#E9A23B;        /* the playhead */
+    --amber-wash:rgba(233,162,59,.15);
+    --warn:#E2718A;         /* errors */
+    --serif:"Literata","Iowan Old Style",Charter,Georgia,serif;
+    --grot:"Space Grotesk","DM Sans",system-ui,sans-serif;
+    --col:62ch;
+  }
+  *{box-sizing:border-box}
+  /* min-height, not height: a sticky child can only stick inside its parent's
+     box, and height:100% would cap that at one viewport. */
+  html,body{margin:0;min-height:100%}
+  body{
+    background:var(--ink);color:var(--bone);
+    font-family:var(--grot);
+    -webkit-font-smoothing:antialiased;
+  }
+  button,select,input{font:inherit;color:inherit}
+  button{background:none;border:0;cursor:pointer}
+  :focus-visible{outline:2px solid var(--amber);outline-offset:3px;border-radius:2px}
+
+  /* ---------------------------------------------------------------- header */
+  /* Sticky: the voice picker and "open another" have to stay reachable while
+     reading, and the reader auto-scrolls hundreds of sentences past them. */
+  .top{
+    position:sticky;top:0;z-index:6;
+    display:flex;align-items:baseline;gap:1.25rem;flex-wrap:wrap;
+    padding:1rem clamp(1rem,6vw,3rem);
+    background:var(--ink);border-bottom:1px solid transparent;
+  }
+  .top.stuck{border-bottom-color:var(--edge)}
+  .mark{
+    font-weight:700;font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--amber);
+  }
+  .doctitle{font-size:.85rem;color:var(--mute);flex:1;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .top label{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+  .top select{
+    background:var(--raise);border:1px solid var(--edge);border-radius:3px;
+    padding:.3rem .5rem;font-size:.8rem;letter-spacing:0;text-transform:none;color:var(--bone);
+  }
+  .ghost{font-size:.78rem;color:var(--mute);border-bottom:1px solid var(--edge);padding-bottom:1px}
+  .ghost:hover{color:var(--bone);border-color:var(--amber)}
+
+  /* ------------------------------------------------------------ empty state */
+  .drop{
+    max-width:var(--col);margin:14vh auto;padding:3.5rem 2rem;text-align:center;
+    border:1px dashed var(--edge);border-radius:6px;transition:border-color .15s,background .15s;
+  }
+  .drop.over{border-color:var(--amber);background:var(--amber-wash)}
+  .drop h1{font-family:var(--serif);font-weight:400;font-size:1.6rem;margin:0 0 .4rem}
+  .drop p{color:var(--mute);font-size:.9rem;margin:0 0 1.6rem}
+  .pick{
+    border:1px solid var(--amber);color:var(--amber);border-radius:3px;
+    padding:.55rem 1.1rem;font-size:.85rem;font-weight:500;
+  }
+  .pick:hover{background:var(--amber);color:var(--ink)}
+  /* Lives outside .drop so a failed swap is still visible while a doc is open. */
+  .oops{
+    max-width:var(--col);margin:1.2rem auto 0;padding:.7rem 1rem;
+    border:1px solid var(--warn);border-radius:4px;
+    color:var(--warn);font-size:.85rem;line-height:1.5;text-align:center;
+  }
+
+  /* ----------------------------------------------------------- reading area */
+  .reader{
+    position:relative;max-width:var(--col);
+    margin:2.5rem auto 9rem;padding:0 1rem 0 2rem;
+  }
+  .ribbon{position:absolute;left:0;top:.4em;bottom:.4em;width:2px;background:var(--edge)}
+  .ribbon i{display:block;width:100%;background:var(--amber);height:0}
+  .page{
+    font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);
+    margin:2.4rem 0 1rem;
+  }
+  .para{font-family:var(--serif);font-size:1.075rem;line-height:1.85;margin:0 0 1.5rem}
+  .s{
+    cursor:pointer;border-radius:2px;padding:.05em 0;
+    background-image:linear-gradient(var(--amber-wash),var(--amber-wash));
+    background-repeat:no-repeat;background-size:0 100%;
+    box-decoration-break:clone;-webkit-box-decoration-break:clone;
+  }
+  .s:hover{color:#fff}
+  .s.done{color:var(--mute)}
+  .s.now{
+    color:#fff;
+    background-size:calc(var(--pct,0) * 100%) 100%;
+    box-shadow:inset 0 -1px 0 var(--amber);
+  }
+
+  /* --------------------------------------------------------------- transport */
+  .bar{
+    position:fixed;left:0;right:0;bottom:0;z-index:5;
+    display:flex;align-items:center;gap:1rem;flex-wrap:wrap;
+    padding:.85rem clamp(1rem,6vw,3rem);
+    background:var(--raise);border-top:1px solid var(--edge);
+  }
+  .bar button{color:var(--mute);font-size:.95rem;padding:.35rem .5rem;border-radius:3px}
+  .bar button:hover{color:var(--bone)}
+  .play{
+    color:var(--ink)!important;background:var(--amber);
+    width:2.6rem;height:2.6rem;border-radius:50%;font-size:1rem;
+    display:grid;place-items:center;flex:none;
+  }
+  .play:hover{filter:brightness(1.12)}
+  .scrub{flex:1 1 12rem;min-width:8rem;accent-color:var(--amber);background:none}
+  .count{font-variant-numeric:tabular-nums;font-size:.78rem;color:var(--mute);white-space:nowrap}
+  .speed{display:flex;align-items:center;gap:.5rem;font-size:.7rem;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+  .speed input{width:6rem;accent-color:var(--amber)}
+  .speed b{font-variant-numeric:tabular-nums;letter-spacing:0;color:var(--bone);font-weight:500}
+  .state{font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);
+    white-space:nowrap}
+  .state.live{color:var(--amber)}
+  .keys{
+    max-width:var(--col);margin:0 auto;padding:0 2rem 3rem;
+    font-size:.72rem;color:var(--mute);line-height:2;
+  }
+  kbd{
+    font-family:var(--grot);font-size:.68rem;border:1px solid var(--edge);
+    border-radius:3px;padding:.1rem .35rem;color:var(--bone);
+  }
+  @media (max-width:620px){ .speed,.keys{display:none} }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <span class="mark">Kokoro Reader</span>
+  <span class="doctitle" id="title"></span>
+  <label>Voice
+    <select id="voice"></select>
+  </label>
+  <button class="ghost" id="another" hidden>Open another PDF</button>
+  <button class="ghost" id="cache" title="Rendered audio kept on disk. Click to free it.">Cache —</button>
+</header>
+
+<main>
+  <section class="drop" id="drop">
+    <h1>Drop a PDF here</h1>
+    <p>It stays on this machine. Nothing is uploaded anywhere.</p>
+    <button class="pick" id="pick">Choose a file</button>
+    <input type="file" id="file" accept="application/pdf" hidden>
+  </section>
+
+  <div class="oops" id="oops" hidden></div>
+
+  <article class="reader" id="reader" hidden>
+    <div class="ribbon"><i id="fill"></i></div>
+    <div id="body"></div>
+  </article>
+
+  <div class="keys" id="keys" hidden>
+    <kbd>space</kbd> play or pause &nbsp;·&nbsp;
+    <kbd>←</kbd><kbd>→</kbd> previous or next sentence &nbsp;·&nbsp;
+    <kbd>shift</kbd> + arrows jump ten &nbsp;·&nbsp;
+    <kbd>[</kbd><kbd>]</kbd> speed &nbsp;·&nbsp; click any sentence to start there
+  </div>
+</main>
+
+<footer class="bar" id="bar" hidden>
+  <button id="prev" title="Previous sentence">◀◀</button>
+  <button class="play" id="toggle" title="Play">▶</button>
+  <button id="next" title="Next sentence">▶▶</button>
+  <input class="scrub" id="scrub" type="range" min="0" max="0" value="0" aria-label="Position in document">
+  <span class="count" id="count">—</span>
+  <label class="speed">Speed
+    <input id="rate" type="range" min="0.6" max="2" step="0.05" value="1">
+    <b id="rateLabel">1.00×</b>
+  </label>
+  <span class="state" id="state">Ready</span>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const S = { doc:null, idx:0, voice:'af_bella', rate:1, playing:false };
+const players = [new Audio(), new Audio()];
+let slot = 0, spans = [], raf = 0;
+
+players.forEach(p => {
+  p.preload = 'auto';
+  p.addEventListener('ended', e => { if (e.target === players[slot]) advance(); });
+  p.addEventListener('waiting', e => { if (e.target === players[slot]) setState('Rendering voice'); });
+  p.addEventListener('playing', e => { if (e.target === players[slot]) setState('Reading', true); });
+  p.addEventListener('error',  e => { if (e.target === players[slot]) setState('Audio failed'); });
+});
+
+/* ------------------------------------------------------------------ startup */
+(async () => {
+  try {
+    const v = await (await fetch('/api/voices')).json();
+    $('voice').innerHTML = v.voices.map(n => `<option>${n}</option>`).join('');
+    S.voice = v.default;
+    $('voice').value = S.voice;
+  } catch { setState('Server unreachable'); }
+  showCache();
+  setInterval(() => { if (S.playing && !armed) showCache(); }, 60000);
+})();
+
+/* ------------------------------------------------------------------- upload */
+const drop = $('drop');
+$('pick').onclick = () => $('file').click();
+$('another').onclick = () => { stop(); $('file').click(); };
+$('file').onchange = e => {
+  if (e.target.files[0]) openPdf(e.target.files[0]);
+  e.target.value = '';               // so re-picking the same file still fires
+};
+
+/* Whole window, not just the panel — the panel is hidden once a doc is open,
+   and dropping a replacement shouldn't mean scrolling back to find it. */
+['dragenter','dragover'].forEach(t => addEventListener(t, e => {
+  if (!e.dataTransfer?.types.includes('Files')) return;
+  e.preventDefault(); drop.classList.add('over');
+}));
+addEventListener('dragleave', e => {
+  if (!e.relatedTarget) drop.classList.remove('over');
+});
+addEventListener('drop', e => {
+  e.preventDefault();
+  drop.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f) { stop(); openPdf(f); }
+});
+
+async function openPdf(file) {
+  $('oops').hidden = true;
+  setState('Reading the PDF');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/doc', { method:'POST', body:fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Something went wrong.');
+    mount(data);
+  } catch (err) {
+    fail(err.message);
+  }
+}
+
+function fail(msg) {
+  $('oops').textContent = msg;
+  $('oops').hidden = false;
+  setState(S.doc ? 'Kept the current document' : 'Ready');
+}
+
+/* -------------------------------------------------------------- render text */
+function mount(doc) {
+  S.doc = doc;
+  spans = [];
+  const body = $('body');
+  body.replaceChildren();
+
+  let para = null, lastPara = -1, lastPage = 0;
+  for (const s of doc.sentences) {
+    if (s.page !== lastPage) {
+      const mark = document.createElement('div');
+      mark.className = 'page';
+      mark.textContent = `Page ${s.page}`;
+      body.append(mark);
+      lastPage = s.page; lastPara = -1;
+    }
+    if (s.para !== lastPara) {
+      para = document.createElement('p');
+      para.className = 'para';
+      body.append(para);
+      lastPara = s.para;
+    }
+    const el = document.createElement('span');
+    el.className = 's';
+    el.textContent = s.text + ' ';
+    el.onclick = () => goto(s.i, true);
+    para.append(el);
+    spans.push(el);
+  }
+
+  $('title').textContent = `${doc.title} · ${doc.sentences.length} sentences`;
+  $('scrub').max = doc.sentences.length - 1;
+  drop.hidden = $('oops').hidden = true;
+  $('reader').hidden = $('bar').hidden = $('keys').hidden = $('another').hidden = false;
+
+  const saved = restore(doc.doc_id);
+  if (saved.voice && [...$('voice').options].some(o => o.value === saved.voice)) {
+    S.voice = saved.voice; $('voice').value = saved.voice;
+  }
+  if (saved.rate) setRate(saved.rate);
+  goto(saved.idx || 0, false);
+  setState(saved.idx ? `Resumed at sentence ${saved.idx + 1}` : 'Ready');
+  showCache();
+}
+
+/* ---------------------------------------------------------------- transport */
+const urlFor = i => `/api/doc/${S.doc.doc_id}/audio/${i}?voice=${encodeURIComponent(S.voice)}`;
+
+function arm(player, i) {
+  if (!S.doc || i >= S.doc.sentences.length) { player.removeAttribute('src'); player.dataset.idx = -1; return; }
+  player.src = urlFor(i);
+  player.dataset.idx = i;
+  player.playbackRate = S.rate;
+}
+
+function goto(i, play) {
+  if (!S.doc) return;
+  i = Math.max(0, Math.min(i, S.doc.sentences.length - 1));
+  players.forEach(p => p.pause());
+  slot = 0;
+  S.idx = i;
+  arm(players[0], i);
+  arm(players[1], i + 1);
+  paint();
+  play ? start() : setPlaying(false);
+}
+
+function advance() {
+  const next = S.idx + 1;
+  if (!S.doc || next >= S.doc.sentences.length) { setPlaying(false); setState('End of document'); return; }
+  const other = players[1 - slot];
+  if (Number(other.dataset.idx) !== next) return goto(next, true);
+  slot = 1 - slot;
+  S.idx = next;
+  players[slot].playbackRate = S.rate;
+  players[slot].play().catch(() => setPlaying(false));
+  arm(players[1 - slot], next + 1);
+  setPlaying(true);
+  paint();
+}
+
+function start() {
+  players[slot].playbackRate = S.rate;
+  players[slot].play().then(() => setPlaying(true)).catch(() => {
+    setPlaying(false); setState('Press play to start');
+  });
+}
+
+function stop() { players.forEach(p => p.pause()); setPlaying(false); }
+
+function toggle() {
+  if (!S.doc) return;
+  S.playing ? stop() : start();
+}
+
+function setPlaying(on) {
+  S.playing = on;
+  $('toggle').textContent = on ? '❚❚' : '▶';
+  $('toggle').title = on ? 'Pause' : 'Play';
+  if (on) { setState('Reading', true); raf ||= requestAnimationFrame(sweep); }
+  else { cancelAnimationFrame(raf); raf = 0; setState('Paused'); sweepOnce(); }
+  save();
+}
+
+function setRate(r) {
+  S.rate = Math.round(Math.min(2, Math.max(0.6, r)) * 20) / 20;
+  players.forEach(p => p.playbackRate = S.rate);
+  $('rate').value = S.rate;
+  $('rateLabel').textContent = S.rate.toFixed(2) + '×';
+  save();
+}
+
+/* ------------------------------------------------------- highlight + ribbon */
+function paint() {
+  const total = S.doc.sentences.length;
+  spans.forEach((el, i) => {
+    el.classList.toggle('done', i < S.idx);
+    el.classList.toggle('now', i === S.idx);
+    if (i !== S.idx) el.style.removeProperty('--pct');
+  });
+  $('fill').style.height = ((S.idx + 1) / total * 100).toFixed(2) + '%';
+  $('scrub').value = S.idx;
+  $('count').textContent = `${S.idx + 1} / ${total}`;
+  spans[S.idx]?.scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: 'center' });
+  save();
+}
+
+function sweepOnce() {
+  const p = players[slot], el = spans[S.idx];
+  if (el && p && p.duration) el.style.setProperty('--pct', (p.currentTime / p.duration).toFixed(4));
+}
+
+function sweep() {
+  sweepOnce();
+  raf = requestAnimationFrame(sweep);
+}
+
+function setState(text, live = false) {
+  $('state').textContent = text;
+  $('state').classList.toggle('live', live);
+}
+
+/* ------------------------------------------------------------- disk it uses */
+/* Rendered speech is ~230 KB a sentence, so a book runs to about a gigabyte per
+   voice. The server evicts down to its budget on its own; this is the manual
+   lever and, more importantly, tells you the number. */
+let armed = false;
+
+async function showCache() {
+  try {
+    const c = await (await fetch('/api/cache')).json();
+    const mb = c.bytes / 1048576;
+    $('cache').textContent = mb >= 1024
+      ? `Cache ${(mb / 1024).toFixed(1)} GB` : `Cache ${Math.round(mb)} MB`;
+    $('cache').title = `${c.files} rendered sentences on disk, budget `
+      + `${Math.round(c.budget / 1048576)} MB. Click to free it.`;
+  } catch { $('cache').hidden = true; }
+}
+
+$('cache').onclick = async () => {
+  if (!armed) {                       // no modal; the second click confirms
+    armed = true;
+    $('cache').textContent = 'Free it? Click again';
+    setTimeout(() => { if (armed) { armed = false; showCache(); } }, 4000);
+    return;
+  }
+  armed = false;
+  $('cache').textContent = 'Freeing…';
+  try {
+    await fetch('/api/cache', { method:'DELETE' });
+    setState('Cache cleared; sentences will re-render as you play them');
+  } catch { setState('Could not clear the cache'); }
+  showCache();
+};
+
+/* Hairline under the header only once something has scrolled beneath it. */
+addEventListener('scroll', () => {
+  document.querySelector('.top').classList.toggle('stuck', scrollY > 4);
+}, { passive: true });
+
+/* -------------------------------------------------------------- persistence */
+const key = id => `kokoro-reader:${id}`;
+function save() {
+  if (!S.doc) return;
+  localStorage.setItem(key(S.doc.doc_id),
+    JSON.stringify({ idx: S.idx, voice: S.voice, rate: S.rate }));
+}
+function restore(id) {
+  try { return JSON.parse(localStorage.getItem(key(id))) || {}; } catch { return {}; }
+}
+
+/* ------------------------------------------------------------------ wiring */
+$('toggle').onclick = toggle;
+$('prev').onclick = () => goto(S.idx - 1, S.playing);
+$('next').onclick = () => goto(S.idx + 1, S.playing);
+$('scrub').oninput = e => { $('count').textContent = `${+e.target.value + 1} / ${S.doc.sentences.length}`; };
+$('scrub').onchange = e => goto(+e.target.value, S.playing);
+$('rate').oninput = e => setRate(+e.target.value);
+$('voice').onchange = e => {
+  S.voice = e.target.value;
+  if (S.doc) goto(S.idx, S.playing);   // re-render this sentence in the new voice
+};
+
+addEventListener('keydown', e => {
+  if (e.target.matches('input,select,textarea') || !S.doc) return;
+  const jump = e.shiftKey ? 10 : 1;
+  const map = {
+    ' ':      () => toggle(),
+    ArrowLeft:  () => goto(S.idx - jump, S.playing),
+    ArrowRight: () => goto(S.idx + jump, S.playing),
+    '[':      () => setRate(S.rate - 0.1),
+    ']':      () => setRate(S.rate + 0.1),
+  };
+  if (map[e.key]) { e.preventDefault(); map[e.key](); }
+});
+</script>
+</body>
+</html>
