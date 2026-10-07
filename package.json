@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "node scripts/copy-local-assets.mjs && tsc -p tsconfig.json && vite build",
     "serve": "node scripts/serve-local.mjs",
+    "start": "node scripts/start-local.mjs",
     "postinstall": "patch-package",
     "models:prepare": "node scripts/prepare-models.mjs",
     "android:add": "cap add android",
@@ -14,6 +15,7 @@
     "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",
     "android:open": "cap open android",
     "check:playback": "node checks/playback.mjs",
+    "check:launcher": "node checks/launcher.mjs",
     "package:portable": "npm run build && node scripts/package-portable.mjs"
   },
   "dependencies": {

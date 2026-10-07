@@ -23,6 +23,11 @@ if (!existsSync(root)) {
 }
 
 const server = createServer((request, response) => {
+  if (request.url === '/_reader/health') {
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    response.end(JSON.stringify({ app: 'novaxis-reader', pid: process.pid }));
+    return;
+  }
   let pathname;
   try {
     pathname = decodeURIComponent(new URL(request.url ?? '/', 'http://127.0.0.1').pathname);
@@ -55,6 +60,11 @@ const server = createServer((request, response) => {
   });
   if (request.method === 'HEAD') { response.end(); return; }
   createReadStream(file).on('error', () => response.destroy()).pipe(response);
+});
+
+server.on('error', error => {
+  console.error('Could not start the local reader:', error.message);
+  process.exitCode = 1;
 });
 
 server.listen(port, host, () => {

@@ -15,7 +15,8 @@ This repository is the local-first book reader for PDF, EPUB, and TXT on desktop
 
 - `npm run build` validates TypeScript and creates the Vite production build; model assets must already be prepared.
 - `npm run models:prepare` prepares local model and runtime files. Network use is limited to initial setup when supported model assets are missing.
-- `npm run serve` serves the production app on loopback.
+- `npm start` starts a detached loopback reader that survives launcher exit.
+- `npm run serve` runs the loopback reader in the current terminal.
 - `npm run android:apk` packages the app and its prepared local assets as a debug APK.
 
 Avoid adding online dependencies to the app's runtime. Keep local data, model licenses, and backup behavior documented in the README.

@@ -16,8 +16,9 @@ async function addFolder(folder) {
 }
 await addFolder(resolve('dist'));
 zip.file(prefix + 'scripts/serve-local.mjs', await readFile('scripts/serve-local.mjs'));
-zip.file(prefix + 'start-reader.sh', '#!/bin/sh\ncd "$(dirname "$0")"\nnode scripts/serve-local.mjs\n', { unixPermissions: 0o755 });
-zip.file(prefix + 'start-reader.cmd', '@echo off\ncd /d "%~dp0"\nnode scripts\\serve-local.mjs\npause\n');
+zip.file(prefix + 'scripts/start-local.mjs', await readFile('scripts/start-local.mjs'));
+zip.file(prefix + 'start-reader.sh', '#!/bin/sh\ncd "$(dirname "$0")"\nnode scripts/start-local.mjs\n', { unixPermissions: 0o755 });
+zip.file(prefix + 'start-reader.cmd', '@echo off\ncd /d "%~dp0"\nnode scripts\\start-local.mjs\npause\n');
 zip.file(prefix + 'START-HERE.txt', 'Novaxis Reader local preview\n\nInstall Node.js 22 or newer once if needed.\nWindows: open start-reader.cmd.\nLinux/macOS: run sh start-reader.sh.\nOpen http://127.0.0.1:4173 in your browser.\n\nThe voice models and app assets are included. You can use the reader without an internet connection. Keep this folder to move the same reader to another computer. Books and reading progress stay in your browser; use Back up library to transfer them. Extra Piper packs are separate.\n\nThis is a personal preview. Before distributing voices commercially, review their terms in README.md.\n');
 zip.file(prefix + 'README.md', await readFile('README.md'));
 await mkdir('artifacts', { recursive: true });
