@@ -1,0 +1,41 @@
+{
+  "name": "local-book-reader",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "node scripts/copy-local-assets.mjs && tsc -p tsconfig.json && vite build",
+    "serve": "node scripts/serve-local.mjs",
+    "postinstall": "patch-package",
+    "models:prepare": "node scripts/prepare-models.mjs",
+    "android:add": "cap add android",
+    "android:sync": "npm run build && cap sync android",
+    "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",
+    "android:open": "cap open android",
+    "check:playback": "node checks/playback.mjs",
+    "package:portable": "npm run build && node scripts/package-portable.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/core": "8.5.2",
+    "@huggingface/transformers": "3.8.1",
+    "epubjs": "0.3.93",
+    "kokoro-js": "1.2.1",
+    "jszip": "3.10.1",
+    "onnxruntime-web": "1.24.3",
+    "pako": "2.1.0",
+    "pdfjs-dist": "6.4.299",
+    "piper-tts-web": "1.1.2",
+    "wasm-media-encoders": "0.7.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2",
+    "patch-package": "8.0.1",
+    "typescript": "5.9.3",
+    "vite": "7.1.12"
+  },
+  "overrides": {
+    "@xmldom/xmldom": "0.9.12"
+  }
+}
