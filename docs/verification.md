@@ -24,3 +24,13 @@ The repository contains source, dependency pins, and model preparation instructi
 ## Local launcher repair
 
 A user encountered failed PDF-worker and voice-engine imports after the temporary preview process stopped. The requested files existed in the build; nothing was listening on port 4173. A detached launcher now starts the local process, waits until it is ready, and reuses it on subsequent starts. A regression check exercises actual launcher exit, successful HTTP loading afterwards, and repeated-start reuse. The portable package uses this launcher. It must be started again after a computer restart.
+
+## Reader changes — 11 October 2026
+
+Eleven automated reading/playback checks pass, including local preparation of upcoming audio while the current clip plays, reuse of prepared audio, speed-change invalidation, and cancellation during preparation. The detached launcher check also passes after rebuilding the interrupted production build.
+
+PDF pages now render from the original document into a single-page canvas, with local fonts, character maps and decoding assets. Per-line reading overlays use PDF coordinates, and page selection and zoom are available. Only the displayed page is rendered; text extraction for speech remains separate. EPUB and TXT retain the passage view.
+
+The prepared laptop archive passes ZIP integrity verification and includes the PDF assets. Initial speech still needs to load the selected voice; look-ahead reduces recurring waits but does not guarantee uninterrupted playback on every device.
+
+The updated Android debug APK builds successfully and passes ZIP integrity verification, includes three ONNX models and the local PDF rendering assets, and still has no Internet permission. It has not been exercised on a physical phone. The final live browser check on 11 October remains pending because the existing tab is on a connection-error page that browser control cannot access; the user was asked to refresh it.

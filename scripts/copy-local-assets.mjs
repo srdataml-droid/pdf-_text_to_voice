@@ -1,8 +1,12 @@
-import { access } from 'node:fs/promises';
+import { access, cp, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+await mkdir(resolve(root, 'public/pdf-assets'), { recursive: true });
+for (const folder of ['standard_fonts', 'cmaps', 'wasm']) {
+  await cp(resolve(root, 'node_modules/pdfjs-dist', folder), resolve(root, 'public/pdf-assets', folder), { recursive: true });
+}
 const paths = [
   'public/voice-packs/piper/en_US-lessac-medium.onnx',
   'public/voice-packs/piper/en_US-lessac-medium.onnx.json',

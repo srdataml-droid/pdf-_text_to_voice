@@ -74,6 +74,17 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .quiet-button:hover { background: #2a2233; color: #f0e9f2; }
 .reader-status { min-height: 32px; padding: 12px 0 5px; color: #9b8fa6; font-size: .72rem; }
 .book-text { padding: 10px 0 50px; font: 1.08rem/1.75 Georgia, "Times New Roman", serif; }
+.pdf-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; font: .8rem/1.5 system-ui, sans-serif; }
+.pdf-toolbar button, .pdf-toolbar input, .pdf-toolbar select { border: 1px solid var(--edge); border-radius: 5px; background: var(--panel); padding: 7px; }
+.pdf-page-number { width: 65px; }
+.pdf-zoom { margin-left: auto; max-width: 160px; }
+.pdf-scroll { overflow: auto; max-width: 100%; border: 1px solid var(--edge); border-radius: 4px; }
+.pdf-stage { position: relative; background: white; margin: auto; }
+.pdf-stage canvas { display: block; }
+.pdf-line { position: absolute; background: transparent; padding: 0; border-radius: 2px; }
+.pdf-line:hover, .pdf-line:focus-visible { background: rgba(233, 162, 59, .14); }
+.pdf-line.current { background: rgba(255, 194, 64, .28); box-shadow: 0 0 0 1px rgba(198, 125, 13, .5); }
+.pdf-page-note { color: var(--muted); font: .72rem/1.5 system-ui, sans-serif; }
 .reading-segment { margin: 0 0 20px; padding-left: 14px; border-left: 2px solid transparent; border-radius: 2px; }
 .reading-segment.current { border-left-color: var(--amber); background: linear-gradient(90deg, var(--wash), transparent 85%); }
 .segment-location { display: block; margin: 0 0 4px; color: #9a8da5; font: 600 .55rem/1.4 system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; }

@@ -5,7 +5,8 @@ A private, local-first reader for PDF, EPUB, and plain-text books. Read along wi
 ## What it does
 
 - Imports selectable-text PDF, non-DRM EPUB, and UTF-8 TXT files.
-- Reads one passage at a time and highlights the passage being spoken.
+- Shows PDF pages with their original layout, images, page controls, and zoom. Tap a text line to read it; the spoken line is highlighted on the page.
+- Reads one passage at a time and prepares the next two local audio clips during playback.
 - Lets you select a speech model first, then a voice available in that model.
 - Stores books and reading position in local IndexedDB storage.
 - Exports and imports a local library backup to move books and progress between devices. Speech models are installed separately.

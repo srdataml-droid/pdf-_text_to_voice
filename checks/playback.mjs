@@ -18,6 +18,66 @@ let count = 0;
 async function check(name, work) { await work(); count++; console.log('PASS ' + name); }
 
 try {
+  await check('Pausing cancels audio still being prepared ahead', async () => {
+    const audio = new Audio(); const entered = gate(); const ready = gate(); let busy = false;
+    const engine = { initialize: async () => {}, synthesize: async text => {
+      if (text === 'next') { busy = true; entered.release(); await ready.promise; busy = false; }
+      return wav();
+    }, dispose: async () => { assert.equal(busy, false); } };
+    const player = new PlaybackController(audio, () => {}, async () => engine);
+    try {
+      await player.play([segment('current'), segment('next')]);
+      await Promise.race([entered.promise, new Promise((_, reject) => setTimeout(() => reject(new Error('No audio prepared ahead')), 1000))]);
+      await player.pause(); ready.release();
+      audio.dispatchEvent(new Event('ended'));
+      await player.stop(); assert.equal(audio.plays, 1);
+    } finally { ready.release(); await player.dispose(); }
+  });
+  await check('The next passage prepares while the current audio plays', async () => {
+    const audio = new Audio(); const spoken = []; const ready = gate();
+    const engine = { initialize: async () => {}, synthesize: async text => {
+      spoken.push(text); if (text === 'next') await ready.promise; return wav();
+    }, dispose: async () => {} };
+    const player = new PlaybackController(audio, () => {}, async () => engine);
+    try {
+      await player.play([segment('current'), segment('next')]);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(audio.plays, 1);
+      assert.deepEqual(spoken, ['current', 'next']);
+    } finally { ready.release(); await player.dispose(); }
+  });
+  await check('Continuous reading uses prepared audio without generating it again', async () => {
+    const audio = new Audio(); const prepared = gate(); const advanced = gate(); const spoken = [];
+    const engine = { initialize: async () => {}, synthesize: async text => {
+      spoken.push(text); if (text === 'next') prepared.release(); return wav();
+    }, dispose: async () => {} };
+    const player = new PlaybackController(audio, (index, state) => {
+      if (index === 1 && state === 'playing') advanced.release();
+    }, async () => engine);
+    try {
+      await player.play([segment('current'), segment('next')]);
+      await Promise.race([prepared.promise, new Promise((_, reject) => setTimeout(() => reject(new Error('No audio prepared ahead')), 1000))]);
+      audio.dispatchEvent(new Event('ended')); await advanced.promise;
+      assert.deepEqual(spoken, ['current', 'next']); assert.equal(audio.plays, 2);
+    } finally { await player.dispose(); }
+  });
+  await check('Changing speed discards old prepared audio', async () => {
+    const audio = new Audio(); const entered = gate(); const ready = gate(); const calls = [];
+    const engine = { initialize: async () => {}, synthesize: async (text, speed) => {
+      calls.push([text, speed]);
+      if (text === 'next' && speed === 1) { entered.release(); await ready.promise; }
+      return wav();
+    }, dispose: async () => {} };
+    const player = new PlaybackController(audio, () => {}, async () => engine);
+    try {
+      await player.play([segment('current'), segment('next')]);
+      await Promise.race([entered.promise, new Promise((_, reject) => setTimeout(() => reject(new Error('No audio prepared ahead')), 1000))]);
+      player.setSettings({ model: 'piper', voice: 'en_US-lessac-medium', speed: 1.5 });
+      ready.release(); await player.jump(1);
+      assert.ok(calls.some(([text, speed]) => text === 'next' && speed === 1.5));
+      assert.equal(audio.plays, 2);
+    } finally { ready.release(); await player.dispose(); }
+  });
   await check('Long paragraphs use bounded speech passages without losing words', async () => {
     const text = Array.from({ length: 240 }, (_, i) => 'word' + i).join(' ');
     const passages = sentenceSegments(text, 'long', 'Chapter 1');

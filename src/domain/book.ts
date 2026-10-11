@@ -19,6 +19,7 @@ export type ReadableSegment = {
   id: string;
   text: string;
   locationLabel: string;
+  pdf?: { page: number; rect: [number, number, number, number] };
 };
 
 export type ParsedBook = {

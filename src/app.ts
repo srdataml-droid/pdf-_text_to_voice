@@ -6,6 +6,7 @@ import { deleteBook, getBook, getProgress, listBooks, saveBook, saveProgress } f
 import { modelById, modelCatalog, type ModelId } from './tts/catalog';
 import { createSpeechEngine } from './tts/engine-factory';
 import { PlaybackController } from './reader/playback-controller';
+import { PdfPageView } from './reader/pdf-page-view';
 import { bindPlaybackControls } from './reader/playback-controls';
 import { listPiperPacks, importPiperPack, deletePiperPack } from './storage/voice-packs';
 import { downloadBackup, restoreBackup } from './settings/backup-view';
@@ -25,6 +26,8 @@ let toastTimer = 0;
 let previewVersion = 0;
 let previewAudio: HTMLAudioElement | undefined;
 let previewTask: Promise<void> | undefined;
+let pdfView: PdfPageView | undefined;
+let bookVersion = 0;
 
 export async function startApp(): Promise<void> {
   renderShell();
@@ -166,11 +169,15 @@ async function importFile(file: File): Promise<void> {
 }
 
 async function openBook(id: string): Promise<void> {
+  const opening = ++bookVersion;
   cancelPreview();
   await previewTask;
   const record = await getBook(id);
   if (!record) return notify('That book is no longer in the library.');
   await player.stop();
+  await pdfView?.destroy();
+  pdfView = undefined;
+  if (opening !== bookVersion) return;
   book = record;
   content = undefined;
   el<HTMLElement>('#welcome').hidden = true;
@@ -180,25 +187,32 @@ async function openBook(id: string): Promise<void> {
   text('#book-format', record.format.toUpperCase() + ' · ' + formatBytes(record.size));
   text('#reader-status', 'Opening book on this device…');
   try {
-    if (record.format === 'pdf') content = await parsePdf(record);
-    else if (record.format === 'epub') content = await parseEpub(record);
-    else content = await parseTxt(record);
+    const parsed = record.format === 'pdf' ? await parsePdf(record)
+      : record.format === 'epub' ? await parseEpub(record) : await parseTxt(record);
+    if (opening !== bookVersion) return;
+    content = parsed;
     const progress = await getProgress(record.id);
     index = Math.min(progress?.segmentIndex ?? 0, content.segments.length - 1);
     await player.load(content.segments, index);
     renderSegments(content.segments);
+    if (record.format === 'pdf') {
+      pdfView = new PdfPageView(el('#book-text'), content.segments,
+        position => void player.play(parsed.segments, position).catch(showError), showError);
+      await pdfView.open(record.file, index, Boolean(progress));
+      if (opening !== bookVersion) return;
+    }
     el<HTMLElement>('#player').hidden = false;
     text('#reader-status', content.segments.length + ' passages · stored on this device');
     paintPosition(index, 'stopped');
   } catch (error) {
-    text('#reader-status', error instanceof Error ? error.message : 'Could not open this book.');
+    if (opening === bookVersion) text('#reader-status', error instanceof Error ? error.message : 'Could not open this book.');
   }
 }
 
 function renderSegments(segments: ReadableSegment[]): void {
   const target = el<HTMLElement>('#book-text');
   const fragment = document.createDocumentFragment();
-  segments.forEach((segment, position) => {
+  (content?.format === 'pdf' ? [] : segments).forEach((segment, position) => {
     const paragraph = document.createElement('p');
     paragraph.className = 'reading-segment';
     paragraph.dataset.index = String(position);
@@ -271,6 +285,7 @@ function cancelPreview(): void {
 }
 
 function paintPosition(position: number, state: string): void {
+  pdfView?.follow(position, state === 'playing' || state === 'loading');
   document.querySelector('.reading-segment.current')?.classList.remove('current');
   const current = document.querySelector<HTMLElement>('.reading-segment[data-index="' + position + '"]');
   current?.classList.add('current');
@@ -278,7 +293,7 @@ function paintPosition(position: number, state: string): void {
   const button = el<HTMLButtonElement>('#play');
   button.dataset.state = state;
   button.textContent = state === 'playing' ? 'Ⅱ' : '▶';
-  text('#location', (state === 'loading' ? 'Preparing · ' : '') + (current?.querySelector('.segment-location')?.textContent ?? 'Ready'));
+  text('#location', (state === 'loading' ? 'Preparing · ' : '') + (content?.segments[position]?.locationLabel ?? 'Ready'));
   const scrub = document.querySelector<HTMLInputElement>('#scrub');
   if (scrub) scrub.value = String(position);
   if (state === 'ended') notify('You have reached the end of this book.');
@@ -341,7 +356,10 @@ async function refreshLibrary(): Promise<void> {
 }
 
 async function closeBook(): Promise<void> {
+  bookVersion++;
   await player.stop();
+  await pdfView?.destroy();
+  pdfView = undefined;
   book = undefined;
   content = undefined;
   el<HTMLElement>('#reader').hidden = true;
