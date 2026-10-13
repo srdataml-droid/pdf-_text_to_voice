@@ -48,11 +48,22 @@ export async function updateBookMetadata(id: string, metadata: Partial<BookMetad
 }
 
 export async function deleteBook(id: string): Promise<void> {
+  return deleteBooks([id]);
+}
+
+export async function deleteBooks(ids: readonly string[]): Promise<void> {
+  const uniqueIds = [...new Set(ids)];
+  if (!uniqueIds.length) return;
   const db = await openDatabase();
   const tx = db.transaction(['books', 'progress'], 'readwrite');
-  tx.objectStore('books').delete(id);
-  tx.objectStore('progress').delete(id);
-  await transactionDone(tx);
+  const done = transactionDone(tx);
+  const books = tx.objectStore('books');
+  const progress = tx.objectStore('progress');
+  for (const id of uniqueIds) {
+    books.delete(id);
+    progress.delete(id);
+  }
+  await done;
 }
 
 export async function getProgress(bookId: string): Promise<ReadingProgress | undefined> {

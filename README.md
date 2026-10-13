@@ -5,6 +5,8 @@ A private, local-first reader for PDF, EPUB, and plain-text books. Read along wi
 ## What it does
 
 - Imports selectable-text PDF, non-DRM EPUB, and UTF-8 TXT files.
+- Adds one book or several books from the same picker, with per-file results, retry for files not added, and a stop control between file copies.
+- Selects books on the shelf for bulk removal, or removes one book at a time. Book copies and their saved positions are removed together; source files are untouched.
 - Shows PDF pages with their original layout, images, page controls, and zoom. Tap a text line to read; all lines of the current spoken passage are highlighted.
 - Reads one passage at a time and prepares the next two local audio clips during playback.
 - Lets you select a speech model first, then a voice available in that model.
@@ -43,6 +45,12 @@ Install Android Studio with the Android SDK and JDK 21. Set ANDROID_HOME to your
     npm run android:apk
 
 The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. Install it on your Android device. The APK already contains the prepared model packs. Keep a copy of the APK in your own storage. Android stores books and progress inside the app; use the reader's backup and restore controls to transfer your library. The package does not need Android Internet permission.
+
+The phone build is version 1.1 (version code 2). Install it as an update over the previous Novaxis Reader build from this machine to keep its private library; the package ID and local database remain the same. **Add books** supports a single file or multiple PDF/EPUB/TXT files. **Select books** enables checkboxes, **Select shown** acts on the current search/filter, and **Delete selected** reviews the chosen count before removal. Hidden selections are counted explicitly when a filter changes.
+
+Local storage shows the phone's internal-volume free/total space and an estimate of private app data. This estimate excludes cache files and packaged APK assets; a partial scan is labelled as a lower bound. Logical book/cover sizes and bundled voice-file sizes are shown separately, so they are not added to the app-data estimate twice. Browser storage allowance is separately labelled and is not device free space.
+
+Books are copied into this app's private storage, rather than a shared public folder. Back up the library to keep an independent copy in a location you choose. The Android storage-settings button opens the app's settings screen; clearing data or uninstalling there removes the private library. The reader does not request broad file access or add Internet permission.
 
 ## Model storage
 

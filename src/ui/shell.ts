@@ -8,7 +8,7 @@ function navigation(): string {
 }
 
 function addBook(): string {
-  return `<button class="button button-primary" type="button" data-action="add-book">${icon('plus')}<span>Add a book</span></button>`;
+  return `<button class="button button-primary" type="button" data-action="add-book">${icon('plus')}<span>Add books</span></button>`;
 }
 
 function closeDialog(): string {
@@ -31,11 +31,14 @@ export function renderShell(): string {
             <label class="search-field">${icon('search')}<span class="visually-hidden">Search books</span><input id="library-search" type="search" placeholder="Search titles or authors" autocomplete="off"><kbd aria-hidden="true">Ctrl K</kbd></label>
             <label class="select-field">${icon('arrow-down-wide-narrow')}<span class="visually-hidden">Sort library</span><select id="library-sort"><option value="recent">Recently opened</option><option value="title">Title, A to Z</option><option value="added">Recently added</option></select></label>
             <label class="select-field">${icon('chevron-down')}<span class="visually-hidden">Filter format</span><select id="library-filter"><option value="all">All formats</option><option value="pdf">PDF</option><option value="epub">EPUB</option><option value="txt">TXT</option></select></label>
+            <button id="select-books" class="button button-secondary" type="button" aria-controls="library-selection" aria-expanded="false">Select books</button>
           </div>
+          <section id="library-selection" class="library-selection" aria-label="Selected books" hidden><strong id="selection-count" role="status" aria-live="polite">0 selected</strong><div class="selection-actions"><button id="select-visible" class="button button-secondary" type="button">Select shown</button><button id="delete-selected" class="button button-danger" type="button" disabled>Delete selected</button><button id="cancel-selection" class="button button-quiet" type="button">Done</button></div></section>
+          <div class="library-storage-note"><p id="library-storage-summary" role="status" aria-live="polite">Books are stored in this app on your device.</p><button class="button button-quiet" type="button" data-view="storage">Local storage →</button></div>
           <div class="section-heading"><h2>On your bookshelf</h2><span id="book-count">0 books</span></div>
           <div id="library-list" class="book-grid library-list"></div>
-          <div id="library-empty" class="empty-state">${icon('book-open', 40)}<h2>Your next chapter starts here.</h2><p>Choose a PDF, EPUB, or text book from your device.</p>${addBook()}<div class="format-tags"><span>PDF</span><span>EPUB</span><span>TXT</span></div></div>
-          <p class="library-footnote">Imported books are copied to this device. Each device keeps its own library and reading position.</p>
+          <div id="library-empty" class="empty-state">${icon('book-open', 40)}<h2>Your next chapter starts here.</h2><p>Choose PDF, EPUB, or text books from your device.</p>${addBook()}<div class="format-tags"><span>PDF</span><span>EPUB</span><span>TXT</span></div></div>
+          <p class="library-footnote">Books are stored in this app on your device; backups let you keep a separate copy. Each device keeps its own library and reading position.</p>
         </div>
       </section>
       <section id="view-reader" class="view reader-view" aria-labelledby="book-title" hidden>
@@ -52,7 +55,7 @@ export function renderShell(): string {
       </section>
       <section id="view-storage" class="view storage-view" aria-labelledby="storage-heading" hidden>
         <header class="workspace-header"><div><h1 id="storage-heading">Local storage</h1><p>Your library, your voices, your device.</p></div><button id="add-piper-voice" class="button button-secondary" type="button">${icon('plus')}Import a Piper voice</button></header>
-        <div class="view-content storage-content"><div id="storage-summary" class="storage-summary"></div><section class="storage-section"><div class="section-heading"><h2>Books on this device</h2><button class="button button-quiet" type="button" data-view="library">Open library →</button></div><div id="stored-books" class="storage-list"></div></section><section class="storage-section"><div class="section-heading"><h2>Voice packs</h2></div><p class="section-description">Bundled voices work offline. You can add a matching Piper model and configuration from your files.</p><div id="stored-voices" class="storage-list"></div></section><section class="backup-card">${icon('shield-check', 32)}<div><h2>Keep a copy of your library.</h2><p>Back up books and saved reading positions. Restore your copy on another device. Voice packs stay separate.</p></div><div class="backup-actions"><button id="export-library" class="button button-primary" type="button">Back up library</button><label id="import-backup-label" class="button button-secondary import-label" for="import-backup" tabindex="0" role="button">Restore backup</label></div></section></div>
+        <div class="view-content storage-content"><section class="device-storage-card" aria-labelledby="device-storage-heading"><div class="section-heading"><h2 id="device-storage-heading">Space on this device</h2></div><p id="device-storage-info" role="status" aria-live="polite">Checking available storage…</p><p id="save-space-note">Books are stored in this app on your device; backups let you keep a separate copy.</p><div class="device-storage-actions"><button id="refresh-device-storage" class="button button-secondary" type="button">Refresh storage</button><button id="manage-app-storage" class="button button-secondary" type="button" hidden>Manage app storage</button></div></section><div id="storage-summary" class="storage-summary"></div><section class="storage-section"><div class="section-heading"><h2>Books on this device</h2><button class="button button-quiet" type="button" data-view="library">Open library →</button></div><div id="stored-books" class="storage-list"></div></section><section class="storage-section"><div class="section-heading"><h2>Voice packs</h2></div><p class="section-description">Bundled voices work offline. You can add a matching Piper model and configuration from your files.</p><div id="stored-voices" class="storage-list"></div></section><section class="backup-card">${icon('shield-check', 32)}<div><h2>Keep a copy of your library.</h2><p>Back up books and saved reading positions. Restore your copy on another device. Voice packs stay separate.</p></div><div class="backup-actions"><button id="export-library" class="button button-primary" type="button">Back up library</button><label id="import-backup-label" class="button button-secondary import-label" for="import-backup" tabindex="0" role="button">Restore backup</label></div></section></div>
       </section>
     </main>
     <nav class="mobile-navigation" aria-label="Mobile navigation">${navigation()}</nav>
@@ -62,7 +65,7 @@ export function renderShell(): string {
       <div class="player-extra"><div class="progress-area"><label class="visually-hidden" for="scrub">Reading position</label><input id="scrub" class="scrub" type="range" min="0" max="0" value="0"><span id="segment-count" class="progress-meta">Ready</span></div><label class="speed-control" for="speed"><span>Speed</span><input id="speed" type="range" min="0.7" max="2" step="0.05" value="1"><b id="speed-value">1.00×</b></label><button class="button button-quiet player-voice-button" type="button" data-view="models">${icon('audio-lines')}<span>Voice</span></button></div>
       <audio id="audio" preload="auto"></audio>
     </footer>
-    <input id="file-picker" type="file" accept=".pdf,.epub,.txt,application/pdf,application/epub+zip,text/plain" hidden>
+    <input id="file-picker" type="file" accept=".pdf,.epub,.txt,application/pdf,application/epub+zip,text/plain" multiple hidden>
     <input id="import-backup" type="file" accept=".zip,application/zip" hidden>
     <input id="voice-pack-picker" type="file" accept=".onnx,.json" multiple hidden>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -70,5 +73,6 @@ export function renderShell(): string {
     <dialog id="chapters" class="reader-dialog" aria-labelledby="chapters-heading"><div class="dialog-heading"><h2 id="chapters-heading">Contents</h2>${closeDialog()}</div><div id="chapter-list" class="chapter-list"></div></dialog>
     <dialog id="recovery" class="reader-dialog" aria-labelledby="recovery-title"><div class="dialog-heading"><h2 id="recovery-title">Let’s get you reading.</h2>${closeDialog()}</div><p id="recovery-message" class="dialog-description"></p><div id="recovery-actions" class="dialog-actions"></div></dialog>
     <dialog id="book-ready" class="reader-dialog" aria-labelledby="ready-title"><div class="dialog-heading"><h2 id="ready-title">Your book is ready.</h2>${closeDialog()}</div><p id="ready-detail" class="dialog-description"></p><button id="ready-open" class="button button-primary dialog-done" type="button">${icon('book-open')}Open book</button></dialog>
+    <dialog id="import-summary" class="reader-dialog import-summary-dialog" aria-labelledby="import-heading" aria-describedby="import-progress"><div class="dialog-heading"><h2 id="import-heading">Adding your books.</h2>${closeDialog()}</div><p id="import-progress" class="dialog-description" role="status" aria-live="polite">Preparing books from your device…</p><ul id="import-results" class="import-results" aria-label="Import results"></ul><div id="import-summary-actions" class="dialog-actions"></div></dialog>
   </div>`;
 }

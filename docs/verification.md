@@ -1,5 +1,15 @@
 # Verification — 7 October 2026
 
+## Phone library update — 13 October 2026
+
+This update adds sequential multi-book import, one-file import through the same picker, per-file outcomes, stop/retry, filtered selection, atomic bulk book/progress removal, and native Android storage information. The existing Capacitor chooser was inspected and already supports multiple ClipData files. No new permissions, packages or automated tests were added.
+
+The desktop production build compiled successfully. Android version 1.1 uses the same package ID and database as the previous build. Private-data estimates exclude caches and APK assets, use a bounded background scan, and explicitly label incomplete scans. Import/delete and phone storage behavior still need a physical-device trial; compilation and source review do not establish those outcomes.
+
+Read-only review found a delayed playback action could outlive deletion while waiting for a voice preview. Playback actions now capture and recheck book ownership after that wait; unloading a book also clears the retained playback queue and reading DOM. No Android device is connected to this workspace for installation.
+
+The Android 1.1 debug APK compiled successfully with the updated native storage bridge and prepared local voices. Its merged manifest has no Internet permission. The updated browser library was opened for a visual inspection of the new controls; no book files were imported or deleted as part of automated testing.
+
 ## Redesign delivery — 13 October 2026
 
 TypeScript and Vite production compilation succeeded for the Figma-inspired redesign. A read-only source review identified and prompted fixes for EPUB/TXT position migration, PDF visual-page persistence, asynchronous chapter seeking, manual passage browsing, and hidden keyboard-focusable selectors. The local library was opened for visual review; local SVG serving was corrected by adding image/font MIME types to the loopback server. No new test suite or automated functional checks were run for this redesign. Earlier results below describe earlier versions, not a complete exercise of the new interface.
