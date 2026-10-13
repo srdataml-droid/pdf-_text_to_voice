@@ -18,14 +18,14 @@ export const modelCatalog: ModelOption[] = [
   {
     id: 'piper',
     label: 'Piper',
-    detail: 'Compact and quick. Lessac voice pack included.',
+    detail: 'A compact starting point. Lessac US English is included; import more Piper voices from your files.',
     voices: [{ id: 'en_US-lessac-medium', label: 'Lessac · US English', model: 'piper' }],
   },
   {
     id: 'kokoro',
     label: 'Kokoro',
-    detail: 'Natural sounding. 28 bundled English voice choices.',
-    voices: kokoroIds.map((id) => ({ id, label: title(id), model: 'kokoro' })),
+    detail: '28 included English voices. Compare a few to find your preferred reading sound.',
+    voices: kokoroIds.map((id) => ({ id, label: title(id.split('_')[1]) + ' · ' + (id.startsWith('a') ? 'US English' : 'British English'), model: 'kokoro' })),
   },
   {
     id: 'kitten-nano',

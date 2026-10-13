@@ -1,4 +1,4 @@
-import { access, cp, mkdir } from 'node:fs/promises';
+import { access, cp, mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -42,3 +42,22 @@ if (missing.length) {
   );
   process.exit(1);
 }
+
+// Measure the actual packaged files. Runtime use reads this local manifest only.
+async function measure(folder) {
+  let bytes = 0, files = 0;
+  for (const entry of await readdir(folder, { withFileTypes: true })) {
+    if (entry.name.startsWith('.') || entry.name === 'manifest.json') continue;
+    const path = resolve(folder, entry.name);
+    if (entry.isDirectory()) { const total = await measure(path); bytes += total.bytes; files += total.files; }
+    else { bytes += (await stat(path)).size; files++; }
+  }
+  return { bytes, files };
+}
+const packRoot = resolve(root, 'public/voice-packs');
+const models = [];
+for (const [id, folder] of [['piper', 'piper'], ['kokoro', 'kokoro'], ['kitten-nano', 'kitten']]) {
+  models.push({ id, ...await measure(resolve(packRoot, folder)) });
+}
+const all = await measure(packRoot);
+await writeFile(resolve(packRoot, 'manifest.json'), JSON.stringify({ models, runtimeBytes: all.bytes - models.reduce((sum, model) => sum + model.bytes, 0), totalBytes: all.bytes }));

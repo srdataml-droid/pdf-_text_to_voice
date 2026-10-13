@@ -15,6 +15,15 @@ const types = {
   '.npz': 'application/octet-stream',
   '.onnx': 'application/octet-stream',
   '.wasm': 'application/wasm',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.avif': 'image/avif',
+  '.ttf': 'font/ttf',
+  '.woff2': 'font/woff2',
 };
 
 if (!existsSync(root)) {
@@ -42,7 +51,10 @@ const server = createServer((request, response) => {
     return;
   }
   if (existsSync(file) && statSync(file).isDirectory()) file = resolve(file, 'index.html');
-  if (!existsSync(file)) file = resolve(root, 'index.html');
+  if (!existsSync(file)) {
+    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Local file not found');
+    return;
+  }
   if (!file.startsWith(root + sep) && file !== resolve(root, 'index.html')) {
     response.writeHead(404).end('Not found');
     return;

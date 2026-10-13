@@ -16,7 +16,8 @@ export class PdfPageView {
   private status: HTMLParagraphElement;
 
   constructor(private target: HTMLElement, private segments: ReadableSegment[],
-    private read: (index: number) => void, private error: (error: unknown) => void) {
+    private read: (index: number) => void, private error: (error: unknown) => void,
+    private pageChanged?: (page: number) => void) {
     target.innerHTML = '<nav class="pdf-toolbar" aria-label="PDF pages"><button type="button" data-page="previous" aria-label="Previous PDF page">‹</button><label>Page <input class="pdf-page-number" type="number" min="1" aria-label="PDF page"></label><span class="pdf-total"></span><button type="button" data-page="next" aria-label="Next PDF page">›</button><select class="pdf-zoom" aria-label="Page zoom"><option value="1">Fit page width</option><option value="1.25">125%</option><option value="1.5">150%</option></select></nav><div class="pdf-scroll"><div class="pdf-stage"></div></div><p class="pdf-page-note"></p>';
     this.stage = target.querySelector('.pdf-stage')!;
     this.label = target.querySelector('.pdf-page-number')!;
@@ -31,7 +32,7 @@ export class PdfPageView {
     });
   }
 
-  async open(file: Blob, position: number, hasProgress: boolean): Promise<void> {
+  async open(file: Blob, position: number, hasProgress: boolean, savedPage?: number): Promise<void> {
     this.loading = pdfjs.getDocument({ data: await file.arrayBuffer(), useSystemFonts: false,
       standardFontDataUrl: '/pdf-assets/standard_fonts/', cMapUrl: '/pdf-assets/cmaps/',
       cMapPacked: true, wasmUrl: '/pdf-assets/wasm/' });
@@ -39,15 +40,17 @@ export class PdfPageView {
     this.total.textContent = 'of ' + this.document.numPages;
     this.label.max = String(this.document.numPages);
     this.position = position;
-    await this.showPage(hasProgress ? this.segments[position]?.pdf?.page ?? 1 : 1);
+    await this.showPage(savedPage ?? (hasProgress ? this.segments[position]?.pdf?.page ?? 1 : 1));
   }
 
-  follow(position: number, speaking: boolean): void {
+  follow(position: number, speaking: boolean, autoFollow = true): void {
     this.position = position;
     const page = this.segments[position]?.pdf?.page;
-    if (speaking && page && page !== this.page) this.navigate(page);
-    else this.highlight(speaking);
+    if (speaking && autoFollow && page && page !== this.page) this.navigate(page);
+    else this.highlight(speaking && autoFollow);
   }
+
+  refresh(): void { if (this.document && this.target.clientWidth) this.navigate(this.page, true); }
 
   private navigate(page: number, force = false): void {
     void this.showPage(page, force).catch(this.error);
@@ -88,16 +91,17 @@ export class PdfPageView {
       const lines = new Map<string, HTMLButtonElement>();
       this.segments.forEach((segment, index) => {
         if (segment.pdf?.page !== page) return;
-        const key = segment.pdf.rect.join(',');
+        for (const region of segment.pdf.rects ?? [segment.pdf.rect]) {
+        const key = region.join(',');
         const existing = lines.get(key);
         if (existing) {
           existing.dataset.indices += ' ' + index;
           existing.setAttribute('aria-label', existing.getAttribute('aria-label') + ' ' + segment.text);
-          return;
+          continue;
         }
         const rect = [
-          ...viewport.convertToViewportPoint(segment.pdf.rect[0], segment.pdf.rect[1]),
-          ...viewport.convertToViewportPoint(segment.pdf.rect[2], segment.pdf.rect[3]),
+          ...viewport.convertToViewportPoint(region[0], region[1]),
+          ...viewport.convertToViewportPoint(region[2], region[3]),
         ];
         const line = document.createElement('button');
         line.type = 'button'; line.className = 'pdf-line'; line.dataset.index = String(index);
@@ -109,20 +113,22 @@ export class PdfPageView {
         line.style.height = Math.max(6, Math.abs(rect[3] - rect[1])) + 'px';
         line.addEventListener('click', () => this.read(index));
         this.stage.append(line); lines.set(key, line); count++;
+        }
       });
       this.status.textContent = count ? 'Original page · tap a line to listen' : 'Original page · no selectable text on this page';
       this.highlight(false);
+      this.pageChanged?.(page);
       pdfPage.cleanup();
     });
     await this.work;
   }
 
   private highlight(scroll: boolean): void {
-    this.stage.querySelector('.pdf-line.current')?.classList.remove('current');
+    this.stage.querySelectorAll('.pdf-line.current').forEach(line => line.classList.remove('current'));
     const current = Array.from(this.stage.querySelectorAll<HTMLElement>('.pdf-line'))
-      .find(line => line.dataset.indices?.split(' ').includes(String(this.position)));
-    current?.classList.add('current');
-    if (scroll && current) current.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      .filter(line => line.dataset.indices?.split(' ').includes(String(this.position)));
+    current.forEach(line => line.classList.add('current'));
+    if (scroll && current[0]) current[0].scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   }
 
   async destroy(): Promise<void> {

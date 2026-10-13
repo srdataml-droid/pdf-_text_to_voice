@@ -1,5 +1,15 @@
 # Verification — 7 October 2026
 
+## Redesign delivery — 13 October 2026
+
+TypeScript and Vite production compilation succeeded for the Figma-inspired redesign. A read-only source review identified and prompted fixes for EPUB/TXT position migration, PDF visual-page persistence, asynchronous chapter seeking, manual passage browsing, and hidden keyboard-focusable selectors. The local library was opened for visual review; local SVG serving was corrected by adding image/font MIME types to the loopback server. No new test suite or automated functional checks were run for this redesign. Earlier results below describe earlier versions, not a complete exercise of the new interface.
+
+Desktop library tokens/assets come from detailed Figma context. Reader, voice, storage and recovery layouts adapt the same design system; further detailed exports were blocked by Figma's tool quota. All fonts/icons are packaged locally. Narration retains one engine and a two-clip look-ahead buffer; EPUB/TXT render at most 80 passages in the current window.
+
+The redesigned portable ZIP and Android debug APK were generated successfully. The Android source manifest continues to remove Internet permission. Local speech-pack sizes are generated from the actual packaged files at build time.
+
+Physical Android behavior, 4 GB Windows performance, background mobile audio, and the new import/backup/recovery journey still require device trials. No voice model was fine tuned. Highlighting follows a spoken passage, not word-level timing.
+
 ## Completed
 
 - Production build: TypeScript and Vite succeeded with the prepared local models.

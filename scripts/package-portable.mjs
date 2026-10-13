@@ -15,6 +15,7 @@ async function addFolder(folder) {
   }
 }
 await addFolder(resolve('dist'));
+await addFolder(resolve('docs'));
 zip.file(prefix + 'scripts/serve-local.mjs', await readFile('scripts/serve-local.mjs'));
 zip.file(prefix + 'scripts/start-local.mjs', await readFile('scripts/start-local.mjs'));
 zip.file(prefix + 'start-reader.sh', '#!/bin/sh\ncd "$(dirname "$0")"\nnode scripts/start-local.mjs\n', { unixPermissions: 0o755 });
