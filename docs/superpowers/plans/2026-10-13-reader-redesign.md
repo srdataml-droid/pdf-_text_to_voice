@@ -17,7 +17,7 @@ Keep image-only PDFs viewable; narration needs selectable text. OCR and voice fi
 - [x] Preserve PDF pages with multi-line passage highlights; bound reflow DOM size.
 - [x] Preserve cover images in compatible library backups; report measured pack sizes.
 - [x] Compile, review source, repair material issues and package desktop/Android artifacts.
-- [ ] Push authorized branch to GitHub and open the updated app.
+- [x] Push authorized branch to GitHub and open the updated app.
 
 ## Source
 
@@ -38,3 +38,7 @@ No physical Android or 4 GB Windows performance measurements are available in th
 - Removed hidden compatibility model/voice selectors from keyboard and accessibility focus.
 - Local server now serves SVGs and font files with explicit MIME types and returns a real 404 for missing assets.
 - The migrated position and new segment count are committed in the same storage transaction.
+
+## Delivery
+
+Implementation commit 94e3a1a was pushed to codex/local-offline-book-reader on 13 October 2026. TypeScript/Vite and Android debug compilation completed successfully. The detached local app is open at http://127.0.0.1:4173. Updated laptop and Android bundles are saved in the parent workspace's outputs folder, with local voices included. The source review and delivery limits are recorded in docs/verification.md.
