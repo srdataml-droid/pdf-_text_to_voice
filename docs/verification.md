@@ -1,5 +1,11 @@
 # Verification — 7 October 2026
 
+## Picker repair — 13 October 2026
+
+The user reported Add books could not select a file. Browser diagnostics confirmed that the file input's closest delegated action target was BODY outside #app, because BODY has data-view and data-theme layout flags. The delegated click listener cancelled that input's default action; no filechooser event opened even though the input was enabled and supported multiple files. The listener now ignores targets outside #app, addressing the same cancellation path for backup/voice inputs and unmarked controls. Android version 1.1.1 includes this repair.
+
+Delivery follow-up — 23 October 2026: the production web build and Android debug packaging completed in the earlier repair session. APK metadata records version 1.1.1 (code 3). The local launcher was restarted after it was found stopped. Post-change picker operation remains unconfirmed: the earlier browser connection timed out, and today's attempt to inspect the tab was blocked by browser security policy. No physical Android check or new automated tests were run. Refresh the app and confirm Add books opens the device file picker before treating this repair as functionally verified.
+
 ## Phone library update — 13 October 2026
 
 This update adds sequential multi-book import, one-file import through the same picker, per-file outcomes, stop/retry, filtered selection, atomic bulk book/progress removal, and native Android storage information. The existing Capacitor chooser was inspected and already supports multiple ClipData files. No new permissions, packages or automated tests were added.

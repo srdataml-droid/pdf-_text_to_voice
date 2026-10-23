@@ -79,7 +79,7 @@ export async function startApp(): Promise<void> {
   });
   app!.addEventListener('click', event => {
     const target = (event.target as Element).closest<HTMLElement>('[data-view],[data-action],[data-theme]');
-    if (!target) return;
+    if (!target || !app!.contains(target)) return;
     if (target.dataset.view) { event.preventDefault(); setView(target.dataset.view as View); }
     if (target.dataset.action === 'add-book') chooseBook();
     if (target.dataset.action === 'close-dialog') {
