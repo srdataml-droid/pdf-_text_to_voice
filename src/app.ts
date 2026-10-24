@@ -93,6 +93,20 @@ export async function startApp(): Promise<void> {
   on('#follow-voice', 'click', () => { settings.follow = !settings.follow; applyAppearance(); persistSettings(); if (settings.follow) revealPosition(); });
   on('#chapters-toggle', 'click', () => { renderChapters(); showDialog('#chapters'); });
   on('#preferences-toggle', 'click', () => showDialog('#preferences'));
+  on('#reader-focus', 'click', () => {
+    const focused = document.body.dataset.readerFocus !== 'true';
+    document.body.dataset.readerFocus = String(focused);
+    el('#reader-focus').setAttribute('aria-pressed', String(focused));
+    text('#reader-focus', focused ? 'Exit focus' : 'Focus');
+    pdfView?.refresh();
+  });
+  on('#spoken-toggle', 'click', () => {
+    const expanded = el('#spoken-toggle').getAttribute('aria-expanded') !== 'true';
+    el('#spoken-toggle').setAttribute('aria-expanded', String(expanded));
+    el('#spoken-passage').hidden = !expanded;
+    text('#spoken-toggle', expanded ? 'Hide text' : 'Show text');
+    pdfView?.refresh();
+  });
   on('#reading-font', 'input', event => { settings.fontSize = Number((event.currentTarget as HTMLInputElement).value); applyAppearance(); persistSettings(); });
   on('#reading-spacing', 'change', event => { settings.spacing = Number((event.currentTarget as HTMLSelectElement).value); applyAppearance(); persistSettings(); });
   on('#reading-width', 'change', event => { settings.width = (event.currentTarget as HTMLSelectElement).value as Settings['width']; applyAppearance(); persistSettings(); });
@@ -360,6 +374,7 @@ async function performOpen(id: string, version: number): Promise<void> {
     await player.stop(); await positionWork; await pdfView?.destroy(); pdfView = undefined;
     if (version !== bookVersion) return;
     book = record; content = undefined; index = 0; windowStart = -1;
+    document.body.dataset.readerFormat = record.format;
     document.body.dataset.book = 'true'; el('#player').hidden = true; el('#book-text').replaceChildren();
     text('#book-title', record.title); text('#player-title', record.title); text('#book-format', record.format.toUpperCase() + ' · ' + formatBytes(record.size));
     text('#reader-status', 'Opening your book on this device…'); setView('reader');
@@ -379,6 +394,7 @@ async function performOpen(id: string, version: number): Promise<void> {
     if (version !== bookVersion) return;
     text('#book-title', book.title); text('#player-title', book.title);
     el<HTMLInputElement>('#scrub').max = String(Math.max(0, parsed.segments.length - 1));
+    el('#player').hidden = !parsed.segments.length;
     if (record.format === 'pdf') {
       pdfView = new PdfPageView(el('#book-text'), parsed.segments, position => void jumpTo(position), showError, page => {
         if (version !== bookVersion) return;
@@ -389,7 +405,6 @@ async function performOpen(id: string, version: number): Promise<void> {
     }
     else renderPassageWindow(index, true);
     if (version !== bookVersion) return;
-    el('#player').hidden = !parsed.segments.length;
     text('#reader-status', parsed.segments.length ? (record.format === 'pdf' ? 'Original PDF pages · ' : 'Tap a passage to listen · ') + parsed.segments.length + ' passages' : 'This PDF has no selectable text. You can view its pages; narration needs a text layer.');
     el<HTMLButtonElement>('#chapters-toggle').disabled = !parsed.segments.length;
     paintPosition(); await refreshLibrary();

@@ -1,5 +1,11 @@
 # Verification — 7 October 2026
 
+## PDF presentation update — 24 October 2026
+
+Version 1.2.1 (code 5) refines the pages-while-reading view. Original PDF pages retain their document fonts, images and layout through the existing PDF.js renderer. Rendering now uses the device pixel ratio up to 3× with a six-million-pixel budget and 4096-pixel maximum edge, replacing the unconditional 1.5× cap. Fit-page, fit-width, true 75–300% scale (96 CSS pixels per 72 PDF points), rotation, bounded viewer scrolling and a neutral paper surround are included. Follow scrolling is confined to the viewer rather than moving the whole app. Narration text is collapsed until Show text is selected; Focus removes navigation without stopping audio.
+
+Source review covered rotated highlight coordinates, pixel allocation, fit sizing above the audio player, previous/next limits and preserving relative scroll position on zoom. The production build and APK packaging are recorded by the delivery session. No automated tests or phone visual checks were run. The user identified reading pages as the problem; no screenshot was supplied. Figma inspection was unavailable due to a connector transport error. This is a source-led presentation pass, not a claim of matching Chrome's rendering engine, selection, OCR or complete PDF feature set.
+
 ## Continuous reading update — 24 October 2026
 
 Version 1.2 (code 4) replaces per-passage HTML media reloads with a bounded Web Audio queue. Three short decoded passages are retained at most, with one serialized speech engine. Audio start times use the audio clock across page/chapter boundaries. Pause suspends that clock; stop and seek invalidate pending generation and disconnect scheduled sources. Voice changes release the old engine. Speed changes affect newly generated passages. Text normalization is applied only to speech input; displayed text, segment indices and saved progress stay unchanged.

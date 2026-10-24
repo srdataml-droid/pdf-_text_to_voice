@@ -368,3 +368,55 @@ body[data-theme='dark'] .button-primary:hover, body[data-theme='dark'] .play-but
   .pdf-toolbar { padding: 8px; }
   .reader-status:empty { display: none; }
 }
+
+/* Original document viewer: quiet chrome, neutral desk, unmodified paper. */
+body[data-view='reader'][data-reader-format='pdf'] .book-text { max-width: 1200px; }
+body[data-view='reader'][data-reader-format='pdf'] .reader-status { display: none; }
+body[data-view='reader'][data-reader-format='pdf'] .reader-content { padding: 12px 24px 28px; }
+.narration-strip { padding: 10px 14px 12px; border-radius: 8px; margin-bottom: 12px; }
+#spoken-toggle { min-height: 36px; padding: 4px 8px; font-size: 11px; border: 0; border-radius: 6px; color: var(--accent); background: transparent; }
+#spoken-toggle:hover { background: var(--spoken); }
+.pdf-toolbar { justify-content: space-between; gap: 8px; margin: 0; padding: 8px 12px; border-radius: 8px 8px 0 0; border-bottom: 0; }
+.pdf-page-controls, .pdf-view-controls { display: flex; align-items: center; gap: 6px; }
+.pdf-toolbar button { padding: 0; min-width: 40px; width: 40px; min-height: 40px; height: 40px; font-size: 22px; border-color: transparent; background: transparent; }
+.pdf-toolbar button:hover:not(:disabled) { background: var(--spoken); }
+.pdf-toolbar button:disabled { opacity: .3; cursor: default; }
+.pdf-page-number { width: 56px; min-height: 40px; text-align: center; font-size: 13px; appearance: textfield; }
+.pdf-page-number::-webkit-inner-spin-button, .pdf-page-number::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.pdf-total { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.pdf-zoom { min-height: 40px; margin: 0; width: 120px; font-size: 12px; }
+.pdf-scroll { padding: 24px; height: 65dvh; min-height: 200px; border: 1px solid var(--border); border-radius: 0 0 8px 8px; background: #e6e8eb; overscroll-behavior: contain; box-shadow: none; }
+body[data-theme='dark'] .pdf-scroll { background: #151719; }
+.pdf-stage { flex: none; box-shadow: 0 2px 6px #00000024, 0 10px 24px #00000012; }
+.pdf-line.current { background: #efd87c4d; box-shadow: none; border-radius: 1px; mix-blend-mode: multiply; }
+.pdf-page-note { text-align: center; font-size: 11px; margin-top: 10px; }
+body[data-view='reader'][data-reader-focus='true'] { --sidebar-width: 0px; }
+body[data-view='reader'][data-reader-focus='true'] .desktop-sidebar,
+body[data-view='reader'][data-reader-focus='true'] .mobile-navigation { display: none; }
+body[data-view='reader'][data-reader-focus='true'] .reader-header { min-height: 64px; padding-block: 10px; }
+body[data-view='reader'][data-reader-focus='true'] .workspace { padding-bottom: calc(105px + env(safe-area-inset-bottom)); }
+body[data-view='reader'][data-reader-focus='true'] .player { bottom: 0; }
+#reader-focus[aria-pressed='true'] { color: var(--accent); background: var(--spoken); }
+@media (max-width: 760px) {
+  body[data-view='reader'][data-reader-format='pdf'] .reader-content { padding: 0 8px 20px; }
+  .reader-header { gap: 6px; padding-block: 10px; }
+  .reader-actions .button { padding-inline: 8px; font-size: 11px; }
+  .narration-strip { padding: 4px 10px 6px; margin-bottom: 6px; border: 0; border-radius: 0; background: transparent; }
+  .narration-meta { gap: 6px; }
+  .narration-meta > span:last-of-type { margin: 0 0 0 auto; flex-basis: auto; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #spoken-toggle { font-size: 10px; padding-inline: 4px; }
+  .pdf-toolbar { padding: 4px; flex-wrap: nowrap; gap: 2px; }
+  .pdf-page-controls, .pdf-view-controls { gap: 2px; }
+  .pdf-toolbar button { width: 36px; min-width: 36px; }
+  .pdf-zoom { max-width: 100px; width: 100px; padding-inline: 4px !important; }
+  .pdf-page-number { width: 42px; padding-inline: 2px !important; }
+  .pdf-total { font-size: 11px; }
+  .pdf-scroll { padding: 10px; }
+  body[data-view='reader'][data-reader-focus='true'] .reader-header { padding-inline: 12px; }
+  body[data-view='reader'][data-reader-focus='true'] .reader-title-group .eyebrow { display: none; }
+}
+@media (max-width: 380px) {
+  .pdf-toolbar button { min-width: 32px; width: 32px; }
+  .pdf-zoom { max-width: 90px; width: 90px; }
+  .pdf-page-number { width: 38px; }
+}
