@@ -343,3 +343,28 @@ body[data-theme='dark'] .button-primary:hover, body[data-theme='dark'] .play-but
   .import-summary-dialog .dialog-actions .button { flex: 1; font-size: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+
+/* Read-along focus: existing paper, ink, amber and sage tokens remain shared. */
+.narration-strip { position: relative; max-width: var(--reading-width); margin: 0 auto 24px; padding: 18px 22px 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); overflow: hidden; }
+.narration-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font: 400 11px/1.5 Inter, system-ui, sans-serif; color: var(--muted); }
+.narration-meta strong { color: var(--text); font-weight: 600; }
+.narration-meta > span:last-child { margin-left: auto; }
+.narration-indicator { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.narration-strip[data-state='playing'] .narration-indicator { background: #648044; box-shadow: 0 0 0 4px var(--sage); }
+.narration-strip[data-state='loading'] .narration-indicator { background: var(--accent); }
+#spoken-passage { margin: 12px 0 0; font: 400 17px/1.65 Lora, Georgia, serif; text-wrap: pretty; max-height: 5em; overflow: auto; }
+.narration-strip[data-state='playing'] { border-color: var(--accent); }
+.narration-progress { position: absolute; height: 3px; bottom: 0; left: 0; width: var(--book-progress, 0%); background: var(--accent); }
+.reading-segment.current { box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 4px; }
+.reading-block { text-wrap: pretty; overflow-wrap: anywhere; }
+.player[data-state='playing'] .play-button { box-shadow: 0 0 0 4px var(--spoken); }
+.pdf-scroll { box-shadow: 0 8px 28px #0000000a; }
+.pdf-toolbar { padding: 12px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+@media (max-width: 760px) {
+  .narration-strip { padding: 14px 16px 18px; margin-bottom: 18px; border-radius: 12px; }
+  .narration-meta { font-size: 10px; }
+  .narration-meta > span:last-child { margin-left: 16px; flex-basis: 100%; }
+  #spoken-passage { font-size: 16px; line-height: 1.6; }
+  .pdf-toolbar { padding: 8px; }
+  .reader-status:empty { display: none; }
+}

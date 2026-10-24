@@ -2,180 +2,193 @@ import type { ReadableSegment } from '../domain/book';
 import type { ModelId } from '../tts/catalog';
 import { createSpeechEngine } from '../tts/engine-factory';
 import type { SpeechEngine } from '../tts/speech-engine';
-import { SegmentQueue } from './segment-queue';
 
 export type PlaybackSettings = { model: ModelId; voice: string; speed: number };
 export type PlaybackUpdate = (index: number, state: 'loading' | 'playing' | 'paused' | 'stopped' | 'ended') => void;
 type EngineFactory = (model: ModelId) => Promise<SpeechEngine>;
+type Clip = { index: number; source: AudioBufferSourceNode; end: number };
 
 export class PlaybackController {
-  private queue = new SegmentQueue([]);
   private segments: ReadableSegment[] = [];
   private index = 0;
   private settings: PlaybackSettings = { model: 'piper', voice: 'en_US-lessac-medium', speed: 1 };
   private engine?: SpeechEngine;
   private engineKey = '';
   private engineWork: Promise<unknown> = Promise.resolve();
-  private objectUrl?: string;
+  private context?: AudioContext;
+  private clips: Clip[] = [];
   private generation = 0;
+  private command = 0;
+  private next = 0;
   private paused = false;
-  private playing = false;
-  private aheadVersion = 0;
-  private ahead = new Map<number, { key: string; clip: Promise<Blob | undefined> }>();
-  private readonly onEnded = () => { void this.advance().catch(this.onError); };
+  private active = false;
+  private pumping?: { generation: number; work: Promise<void> };
 
   constructor(
-    private readonly audio: HTMLAudioElement,
+    _audio: HTMLAudioElement,
     private readonly update: PlaybackUpdate,
     private readonly factory: EngineFactory = createSpeechEngine,
     private readonly onError: (error: unknown) => void = console.error,
-  ) {
-    this.audio.addEventListener('ended', this.onEnded);
-  }
+  ) {}
 
   setSettings(settings: PlaybackSettings): void {
-    const changed = this.settings.model !== settings.model || this.settings.voice !== settings.voice;
-    const speedChanged = this.settings.speed !== settings.speed;
+    const voiceChanged = this.settings.model !== settings.model || this.settings.voice !== settings.voice;
     this.settings = { ...settings };
-    if (changed) void this.stop().catch(this.onError);
-    else if (speedChanged) { this.clearAhead(); if (this.playing) this.prepareAhead(); }
+    if (voiceChanged) void this.stop().catch(this.onError);
+    // Already scheduled speech finishes at its original speed; following clips use the new speed.
   }
 
   async load(segments: ReadableSegment[], startIndex = 0): Promise<void> {
+    const command = this.command + 1;
     await this.stop();
+    if (command !== this.command) return;
     this.segments = segments;
-    this.queue = new SegmentQueue(segments);
-    this.index = Math.max(0, Math.min(startIndex, Math.max(0, segments.length - 1)));
+    this.index = this.bound(startIndex);
     this.update(this.index, 'stopped');
   }
 
   async play(segments: ReadableSegment[], startIndex = this.index): Promise<void> {
     if (!segments.length) return;
-    if (segments !== this.segments) await this.load(segments, startIndex);
-    if (this.paused && this.objectUrl && startIndex === this.index) {
+    // Unlock the audio clock while still handling the user's Play gesture.
+    const command = ++this.command;
+    this.context ??= new AudioContext();
+    const resume = this.context.resume();
+    if (segments !== this.segments) {
+      this.generation++;
+      this.clearClips();
+      this.segments = segments;
+      this.index = this.bound(startIndex);
+      this.active = false;
       this.paused = false;
-      const operation = this.generation;
-      await this.audio.play();
-      if (operation === this.generation && !this.paused) {
-        this.playing = true;
-        this.update(this.index, 'playing');
-        this.prepareAhead();
-      }
+    }
+    await resume;
+    if (command !== this.command) return;
+    if (this.active && this.paused && startIndex === this.index) {
+      this.paused = false;
+      this.update(this.index, this.clips.length ? 'playing' : 'loading');
+      await this.pump();
       return;
     }
-    await this.playAt(Math.max(0, Math.min(startIndex, this.queue.length - 1)));
+    await this.playAt(this.bound(startIndex));
   }
 
   async pause(): Promise<void> {
-    this.generation++;
-    this.playing = false;
-    this.clearAhead();
-    this.audio.pause();
+    const command = ++this.command;
     this.paused = true;
-    this.update(this.index, 'paused');
+    await this.context?.suspend();
+    if (command === this.command) this.update(this.index, 'paused');
   }
 
   async stop(): Promise<void> {
+    this.command++;
     this.generation++;
-    this.playing = false;
-    this.clearAhead();
+    this.active = false;
     this.paused = false;
-    this.audio.pause();
-    this.audio.removeAttribute('src');
-    this.audio.load();
-    this.releaseUrl();
+    this.clearClips();
     this.update(this.index, 'stopped');
-    await this.serial(async () => this.disposeEngine());
+    await this.serial(() => this.disposeEngine());
   }
 
   async jump(index: number): Promise<void> {
-    if (!this.queue.length) return;
-    await this.playAt(Math.max(0, Math.min(index, this.queue.length - 1)));
+    if (!this.segments.length) return;
+    const command = ++this.command;
+    this.context ??= new AudioContext();
+    await this.context.resume();
+    if (command !== this.command) return;
+    await this.playAt(this.bound(index));
   }
 
   async dispose(): Promise<void> {
     await this.stop();
-    this.audio.removeEventListener('ended', this.onEnded);
+    await this.context?.close();
+    this.context = undefined;
   }
 
-  private async playAt(index: number, continuing = false): Promise<void> {
-    const segment = this.queue.at(index);
-    if (!segment) return;
-    const operation = ++this.generation;
-    const settings = { ...this.settings };
-    if (!continuing) this.clearAhead();
-    const buffered = this.ahead.get(index);
-    this.ahead.delete(index);
+  private async playAt(index: number): Promise<void> {
+    this.generation++;
+    this.clearClips();
     this.index = index;
+    this.next = index;
     this.paused = false;
-    this.playing = false;
-    this.audio.pause();
-    this.audio.removeAttribute('src');
-    this.audio.load();
-    this.releaseUrl();
+    this.active = true;
     this.update(index, 'loading');
-    try {
-      const cached = buffered?.key === this.settingsKey(settings) ? await buffered.clip : undefined;
-      const result = cached ?? await this.serial(async () => {
-        if (operation !== this.generation) return;
+    await this.pump();
+  }
+
+  private pump(): Promise<void> {
+    const generation = this.generation;
+    if (this.pumping?.generation === generation) return this.pumping.work;
+    const work = this.fill(generation).catch(error => {
+      if (generation !== this.generation) return;
+      this.active = false;
+      this.clearClips();
+      this.update(this.index, 'stopped');
+      throw error;
+    }).finally(() => {
+      if (this.pumping?.generation === generation) this.pumping = undefined;
+    });
+    this.pumping = { generation, work };
+    return work;
+  }
+
+  private async fill(generation: number): Promise<void> {
+    // Three short decoded passages at most. Page boundaries never stop this queue.
+    while (this.active && generation === this.generation && this.clips.length < 3 && this.next < this.segments.length) {
+      const position = this.next++;
+      const settings = { ...this.settings };
+      const blob = await this.serial(async () => {
+        if (generation !== this.generation) return;
         const engine = await this.getEngine(settings);
-        if (operation !== this.generation) return;
-        return engine.synthesize(segment.text, settings.speed);
+        if (generation !== this.generation) return;
+        return engine.synthesize(speechText(this.segments[position].text), settings.speed);
       });
-      if (!result || operation !== this.generation || this.paused) return;
-      this.objectUrl = URL.createObjectURL(result);
-      this.audio.src = this.objectUrl;
-      await this.audio.play();
-      if (operation === this.generation && !this.paused) {
-        this.playing = true;
-        this.update(index, 'playing');
-        this.prepareAhead();
-      }
-    } catch (error) {
-      if (operation === this.generation) {
-        this.update(index, 'stopped');
-        throw error;
+      if (!blob || generation !== this.generation || !this.active) return;
+      const context = this.context!;
+      const buffer = await context.decodeAudioData(await blob.arrayBuffer());
+      if (generation !== this.generation || !this.active) return;
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      const start = Math.max(context.currentTime + .015, this.clips.at(-1)?.end ?? 0);
+      const clip: Clip = { index: position, source, end: start + buffer.duration };
+      const first = !this.clips.length;
+      this.clips.push(clip);
+      source.onended = () => {
+        source.disconnect();
+        if (generation !== this.generation || !this.active) return;
+        this.clips = this.clips.filter(item => item !== clip);
+        if (this.clips.length) {
+          this.index = this.clips[0].index;
+          if (!this.paused) this.update(this.index, 'playing');
+        } else if (this.next >= this.segments.length && !this.pumping) {
+          this.active = false;
+          this.update(this.index, 'ended');
+        } else if (!this.paused) this.update(this.index, 'loading');
+        // A pending fill owns generation of the next passage, including at book end.
+        if (this.active) void this.pump().catch(this.onError);
+      };
+      source.start(start);
+      if (first) {
+        this.index = position;
+        if (!this.paused) this.update(position, 'playing');
       }
     }
-  }
-
-  private async advance(): Promise<void> {
-    if (!this.playing || this.paused) return;
-    this.playing = false;
-    this.releaseUrl();
-    if (this.index + 1 >= this.queue.length) {
-      this.audio.removeAttribute('src');
-      this.clearAhead();
+    if (generation === this.generation && this.active && !this.clips.length && this.next >= this.segments.length) {
+      this.active = false;
       this.update(this.index, 'ended');
-      return;
-    }
-    await this.playAt(this.index + 1, true);
-  }
-
-  private settingsKey(settings: PlaybackSettings): string {
-    return settings.model + ':' + settings.voice + ':' + settings.speed;
-  }
-
-  private clearAhead(): void { this.aheadVersion++; this.ahead.clear(); }
-
-  private prepareAhead(): void {
-    const version = this.aheadVersion;
-    const settings = { ...this.settings };
-    const key = this.settingsKey(settings);
-    // Only two short clips are retained; inference remains serialized.
-    for (let next = this.index + 1; next <= this.index + 2; next++) {
-      const segment = this.queue.at(next);
-      if (!segment || this.ahead.has(next)) continue;
-      const clip = this.serial(async () => {
-        if (version !== this.aheadVersion) return;
-        const engine = await this.getEngine(settings);
-        if (version !== this.aheadVersion) return;
-        const result = await engine.synthesize(segment.text, settings.speed);
-        return version === this.aheadVersion ? result : undefined;
-      }).catch(() => undefined); // A failed preparation is retried when that passage is requested.
-      this.ahead.set(next, { key, clip });
     }
   }
+
+  private clearClips(): void {
+    for (const { source } of this.clips) {
+      source.onended = null;
+      source.stop();
+      source.disconnect();
+    }
+    this.clips = [];
+  }
+
+  private bound(index: number): number { return Math.max(0, Math.min(index, Math.max(0, this.segments.length - 1))); }
 
   private async getEngine(settings: PlaybackSettings): Promise<SpeechEngine> {
     const key = settings.model + ':' + settings.voice;
@@ -201,9 +214,10 @@ export class PlaybackController {
     this.engineKey = '';
     if (engine) await engine.dispose();
   }
+}
 
-  private releaseUrl(): void {
-    if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
-    this.objectUrl = undefined;
-  }
+// Clean extraction artifacts for speech without altering displayed text or saved positions.
+function speechText(text: string): string {
+  return text.normalize('NFKC').replace(/[\u00ad\u200b\ufeff]/g, '')
+    .replace(/\s+([,.;:!?])/g, '$1').replace(/\s+/g, ' ').trim();
 }

@@ -13,6 +13,7 @@ export type DeviceStorageInfo = {
 const localFiles = registerPlugin<{
   getStorageInfo(): Promise<DeviceStorageInfo>;
   openAppStorageSettings(): Promise<void>;
+  setReadingActive(options: { active: boolean }): Promise<void>;
 }>('LocalFiles');
 
 function available(): boolean {
@@ -34,4 +35,14 @@ export async function getDeviceStorageInfo(): Promise<DeviceStorageInfo | undefi
 export async function openAppStorageSettings(): Promise<void> {
   if (!available()) throw new Error('Android app storage settings are not available on this device.');
   await localFiles.openAppStorageSettings();
+}
+
+let readingActive = false;
+export function keepReadingScreenAwake(active: boolean): void {
+  if (!available() || active === readingActive) return;
+  readingActive = active;
+  void localFiles.setReadingActive({ active }).catch(() => {
+    // Older app shells can still read; they do not have the screen-awake bridge.
+    readingActive = false;
+  });
 }

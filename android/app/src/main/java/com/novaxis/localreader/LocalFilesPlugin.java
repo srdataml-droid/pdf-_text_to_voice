@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.StatFs;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.view.WindowManager;
 import android.util.Base64;
 import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSObject;
@@ -23,6 +24,18 @@ import java.util.ArrayDeque;
 public class LocalFilesPlugin extends Plugin {
     private static final int MAX_STORAGE_ENTRIES = 20000;
     private static final long STORAGE_SCAN_MILLIS = 2000;
+
+    @PluginMethod
+    public void setReadingActive(PluginCall call) {
+        Activity activity = getActivity();
+        if (activity == null) { call.reject("The reader is not connected to a screen."); return; }
+        boolean active = Boolean.TRUE.equals(call.getBoolean("active", false));
+        activity.runOnUiThread(() -> {
+            if (active) activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            else activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            call.resolve();
+        });
+    }
 
     @PluginMethod
     public void getStorageInfo(PluginCall call) {

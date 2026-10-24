@@ -1,5 +1,15 @@
 # Verification — 7 October 2026
 
+## Continuous reading update — 24 October 2026
+
+Version 1.2 (code 4) replaces per-passage HTML media reloads with a bounded Web Audio queue. Three short decoded passages are retained at most, with one serialized speech engine. Audio start times use the audio clock across page/chapter boundaries. Pause suspends that clock; stop and seek invalidate pending generation and disconnect scheduled sources. Voice changes release the old engine. Speed changes affect newly generated passages. Text normalization is applied only to speech input; displayed text, segment indices and saved progress stay unchanged.
+
+The update applies Piper Lessac once to existing settings, then preserves subsequent choices. Read-along graphics reuse the existing paper, amber, sage, Inter and Lora design. A native screen-awake flag is active only while foreground narration is loading or playing; this adds no permission. A contents selection continues narration when already playing.
+
+Production TypeScript/Vite compilation completed successfully. Source review covered queue ownership, cancellation, bounded decoded audio, paused-clock resume, settings migration and chapter navigation. No automated tests or device listening checks were run for this update. Actual voice throughput, audible joins, visual rendering and Android pause/resume remain to be confirmed on the phone. Background/locked-screen playback is not implemented, and a model that generates slower than real time can still cause waits.
+
+Android debug packaging also completed successfully. The delivered APK's entry script matches the final web build, all 43 non-hidden voice/runtime files match the build assets, and the packaged permission list has no Internet permission. The update keeps the existing application ID and database. Installation was pending a reconnected, authorized device at the time this delivery note was written.
+
 ## Picker repair — 13 October 2026
 
 The user reported Add books could not select a file. Browser diagnostics confirmed that the file input's closest delegated action target was BODY outside #app, because BODY has data-view and data-theme layout flags. The delegated click listener cancelled that input's default action; no filechooser event opened even though the input was enabled and supported multiple files. The listener now ignores targets outside #app, addressing the same cancellation path for backup/voice inputs and unmarked controls. Android version 1.1.1 includes this repair.

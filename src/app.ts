@@ -4,7 +4,7 @@ import { parsePdf } from './formats/pdf-content';
 import { parseTxt } from './formats/txt-content';
 import { deleteBooks, getBook, getProgress, listBooks, listReadingProgress, saveProgress, updateBookMetadata } from './storage/book-store';
 import { importBookFiles, type BookImportResult } from './library/book-import';
-import { getDeviceStorageInfo, openAppStorageSettings } from './storage/device-storage';
+import { getDeviceStorageInfo, openAppStorageSettings, keepReadingScreenAwake } from './storage/device-storage';
 import { modelById, modelCatalog, type ModelId } from './tts/catalog';
 import { createSpeechEngine } from './tts/engine-factory';
 import { PlaybackController } from './reader/playback-controller';
@@ -16,7 +16,7 @@ import { renderShell } from './ui/shell';
 import { icon } from './ui/icons';
 
 type View = 'library' | 'reader' | 'models' | 'storage';
-type Settings = { model: ModelId; voices: Record<string, string>; speed: number; theme: 'paper' | 'dark'; fontSize: number; spacing: number; width: 'narrow' | 'wide'; follow: boolean };
+type Settings = { model: ModelId; voices: Record<string, string>; speed: number; theme: 'paper' | 'dark'; fontSize: number; spacing: number; width: 'narrow' | 'wide'; follow: boolean; narrationDefaults: number };
 type PackManifest = { models: { id: ModelId; bytes: number; files: number }[]; runtimeBytes: number; totalBytes: number };
 const SETTINGS_KEY = 'novaxis-reader-settings-v1';
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -59,6 +59,7 @@ export async function startApp(): Promise<void> {
   app!.innerHTML = renderShell();
   player = new PlaybackController(el<HTMLAudioElement>('#audio'), (position, state) => {
     index = position; playbackState = state; paintPosition();
+    keepReadingScreenAwake(state === 'playing' || state === 'loading');
     if (book && content && !openingBook && ['playing', 'paused', 'ended'].includes(state)) {
       const id = book.id;
       const location = content.segments[position]?.locationLabel;
@@ -71,6 +72,7 @@ export async function startApp(): Promise<void> {
     }
   }, undefined, showError);
   player.setSettings(currentSettings());
+  persistSettings();
   bindPlaybackControls({
     toggle: () => void togglePlayback(),
     previous: () => void jumpTo(index - 1),
@@ -433,7 +435,11 @@ function renderChapters(): void {
   }
   if (!chapters?.length && content?.segments.length) chapters = [{ title: 'Beginning', index: 0 }];
   for (const chapter of chapters ?? []) {
-    const button = action(chapter.title, 'chapter-item', () => { el<HTMLDialogElement>('#chapters').close(); void seekWithoutPlaying(chapter.index).catch(showError); });
+    const button = action(chapter.title, 'chapter-item', () => {
+      el<HTMLDialogElement>('#chapters').close();
+      if (['playing', 'loading'].includes(playbackState)) void jumpTo(chapter.index);
+      else void seekWithoutPlaying(chapter.index).catch(showError);
+    });
     const next = chapters?.find(item => item.index > chapter.index)?.index ?? content!.segments.length;
     if (index >= chapter.index && index < next) button.setAttribute('aria-current', 'location');
     list.append(button);
@@ -496,6 +502,13 @@ function paintPosition(): void {
   button.textContent = playbackState === 'loading' ? '…' : playbackState === 'playing' ? 'Ⅱ' : '▶';
   button.setAttribute('aria-label', playbackState === 'loading' ? 'Cancel preparing audio' : playbackState === 'playing' ? 'Pause reading' : 'Play reading');
   el('#player').dataset.state = playbackState;
+  const narration = el('#narration-strip');
+  narration.dataset.state = playbackState;
+  const chosen = currentSettings();
+  text('#narration-voice', modelById(chosen.model).label + ' · ' + (modelById(chosen.model).voices.find(voice => voice.id === chosen.voice)?.label ?? 'Local voice'));
+  text('#narration-state', playbackState === 'playing' ? 'Reading continuously' : playbackState === 'loading' ? 'Preparing the next passage' : playbackState === 'paused' ? 'Paused · your place is saved' : playbackState === 'ended' ? 'Book complete' : 'Ready to read');
+  text('#spoken-passage', content?.segments[index]?.text ?? 'Press play to listen and follow the words here.');
+  narration.style.setProperty('--book-progress', (content?.segments.length ? (index + 1) / content.segments.length * 100 : 0) + '%');
   text('#location', (playbackState === 'loading' ? 'Preparing audio · ' : playbackState === 'paused' ? 'Paused · ' : '') + (content?.segments[index]?.locationLabel ?? 'Ready'));
   text('#segment-count', content?.segments.length ? (index + 1) + ' / ' + content.segments.length + ' passages' : 'Ready');
   el<HTMLInputElement>('#scrub').value = String(index);
@@ -689,10 +702,12 @@ function showError(error: unknown, retry?: () => void): void {
     [...(retry ? [{ label: 'Try again', run: retry }] : []), { label: quota ? 'Manage storage' : missing ? 'Choose another voice' : 'Close', run: () => { if (quota) setView('storage'); else if (missing) setView('models'); } }]);
 }
 function readSettings(): Settings {
-  const defaults: Settings = { model: 'piper', voices: { piper: 'en_US-lessac-medium' }, speed: 1, theme: 'paper', fontSize: 22, spacing: 1.75, width: 'narrow', follow: true };
+  const defaults: Settings = { model: 'piper', voices: { piper: 'en_US-lessac-medium' }, speed: 1, theme: 'paper', fontSize: 22, spacing: 1.75, width: 'narrow', follow: true, narrationDefaults: 2 };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null'); if (!saved || !modelCatalog.some(item => item.id === saved.model)) return defaults;
-    return { ...defaults, model: saved.model, voices: saved.voices && typeof saved.voices === 'object' && !Array.isArray(saved.voices) ? saved.voices : defaults.voices,
+    const voices = saved.voices && typeof saved.voices === 'object' && !Array.isArray(saved.voices) ? saved.voices : defaults.voices;
+    // Apply the requested Piper default once on upgrade, then remember later voice choices.
+    return { ...defaults, model: saved.narrationDefaults === 2 ? saved.model : 'piper', voices: { ...voices, ...(saved.narrationDefaults === 2 ? {} : defaults.voices) },
       speed: Math.max(.7, Math.min(2, Number(saved.speed) || 1)), theme: saved.theme === 'dark' ? 'dark' : 'paper', fontSize: Math.max(16, Math.min(32, Number(saved.fontSize) || 22)),
       spacing: [1.5, 1.75, 2].includes(saved.spacing) ? saved.spacing : 1.75, width: saved.width === 'wide' ? 'wide' : 'narrow', follow: saved.follow !== false };
   } catch { return defaults; }
