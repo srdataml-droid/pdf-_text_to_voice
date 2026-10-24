@@ -14,6 +14,7 @@ import { listPiperPacks, importPiperPack, deletePiperPack } from './storage/voic
 import { downloadBackup, restoreBackup } from './settings/backup-view';
 import { renderShell } from './ui/shell';
 import { icon } from './ui/icons';
+import { agreementRequired, bindPrivacyControls, requestFileAccess, showPrivacyWelcome } from './privacy/privacy-controls';
 
 type View = 'library' | 'reader' | 'models' | 'storage';
 type Settings = { model: ModelId; voices: Record<string, string>; speed: number; theme: 'paper' | 'dark'; fontSize: number; spacing: number; width: 'narrow' | 'wide'; follow: boolean; narrationDefaults: number };
@@ -73,6 +74,7 @@ export async function startApp(): Promise<void> {
   }, undefined, showError);
   player.setSettings(currentSettings());
   persistSettings();
+  bindPrivacyControls(async () => { cancelPreview(); await player.pause(); });
   bindPlaybackControls({
     toggle: () => void togglePlayback(),
     previous: () => void jumpTo(index - 1),
@@ -115,15 +117,18 @@ export async function startApp(): Promise<void> {
     el('#player-expand').setAttribute('aria-expanded', String(expanded));
     document.body.dataset.playerExpanded = String(expanded);
   });
-  on('#add-piper-voice', 'click', () => el<HTMLInputElement>('#voice-pack-picker').click());
+  on('#add-piper-voice', 'click', () => requestFileAccess('voices', () => el<HTMLInputElement>('#voice-pack-picker').click()));
   on('#voice-pack-picker', 'change', event => { const input = event.currentTarget as HTMLInputElement; const files = Array.from(input.files ?? []); if (files.length) void addPiperVoice(files); input.value = ''; });
-  on('#try-voice', 'click', () => { if (!previewTask) previewTask = tryVoice().finally(() => { previewTask = undefined; }); });
+  on('#try-voice', 'click', () => {
+    const preview = () => { if (!previewTask) previewTask = tryVoice().finally(() => { previewTask = undefined; }); };
+    if (!agreementRequired(preview)) preview();
+  });
   on('#use-voice', 'click', () => void useVoice());
   on('#voices-back', 'click', () => { cancelPreview(); el('#voice-stage').hidden = true; el('#model-stage').hidden = false; });
   on('#model', 'change', event => selectModel((event.currentTarget as HTMLSelectElement).value as ModelId));
   on('#voice', 'change', event => selectVoice((event.currentTarget as HTMLSelectElement).value));
-  on('#export-library', 'click', () => void backupLibrary());
-  on('#import-backup-label', 'keydown', event => { if (['Enter', ' '].includes((event as KeyboardEvent).key)) { event.preventDefault(); el<HTMLInputElement>('#import-backup').click(); } });
+  on('#export-library', 'click', () => requestFileAccess('backup', () => void backupLibrary()));
+  on('#import-backup-label', 'click', () => requestFileAccess('restore', () => el<HTMLInputElement>('#import-backup').click()));
   on('#file-picker', 'change', event => { const input = event.currentTarget as HTMLInputElement; const files = Array.from(input.files ?? []); if (files.length) void importFiles(files); input.value = ''; });
   on('#select-books', 'click', () => setBookSelection(!selectingBooks));
   on('#cancel-selection', 'click', () => setBookSelection(false));
@@ -149,6 +154,7 @@ export async function startApp(): Promise<void> {
     renderModels();
   } catch (error) { showError(error); }
   setView('library');
+  showPrivacyWelcome();
 }
 
 function setView(next: View): void {
@@ -287,6 +293,7 @@ function paintLibraryBusy(): void {
   el<HTMLButtonElement>('#export-library').disabled = libraryBusy();
   el<HTMLInputElement>('#import-backup').disabled = libraryBusy();
   el('#import-backup-label').setAttribute('aria-disabled', String(libraryBusy()));
+  el<HTMLButtonElement>('#import-backup-label').disabled = libraryBusy();
   paintBookSelection();
 }
 
@@ -309,6 +316,7 @@ function readingStatus(item: BookRecord): string { const value = completion(item
 
 async function importFiles(files: readonly File[]): Promise<void> {
   if (!files.length) return;
+  if (agreementRequired(() => void importFiles(files))) return;
   if (libraryBusy()) return notify('Please wait while your library is updated.');
   importing = true; cancelBookImport = false; paintLibraryBusy();
   const dialog = el<HTMLDialogElement>('#import-summary');
@@ -491,6 +499,7 @@ async function browseWindow(position: number): Promise<void> {
 }
 async function jumpTo(position: number): Promise<void> {
   if (!book || !content?.segments.length || openingBook || deletingBooks || restoringBooks) return;
+  if (agreementRequired(() => void jumpTo(position))) return;
   const version = bookVersion, bookId = book.id, parsed = content;
   cancelPreview(); await previewTask;
   if (version !== bookVersion || book?.id !== bookId || content !== parsed || openingBook || deletingBooks || restoringBooks) return;
@@ -498,6 +507,7 @@ async function jumpTo(position: number): Promise<void> {
 }
 async function togglePlayback(): Promise<void> {
   if (!book || !content?.segments.length || openingBook || deletingBooks || restoringBooks) return notify('Choose a readable book when your library is ready.');
+  if (!['playing', 'loading'].includes(playbackState) && agreementRequired(() => void togglePlayback())) return;
   const version = bookVersion, bookId = book.id, parsed = content;
   cancelPreview(); await previewTask;
   if (version !== bookVersion || book?.id !== bookId || content !== parsed || openingBook || deletingBooks || restoringBooks) return;
@@ -598,6 +608,7 @@ async function refreshPiperVoices(): Promise<void> {
   if (!modelById('piper').voices.some(voice => voice.id === settings.voices.piper)) settings.voices.piper = 'en_US-lessac-medium'; draftVoices = { ...settings.voices };
 }
 async function addPiperVoice(files: File[]): Promise<void> {
+  if (agreementRequired(() => void addPiperVoice(files))) return;
   try { cancelPreview(); await previewTask; const pack = await importPiperPack(files); await refreshPiperVoices(); draftModel = 'piper'; draftVoices.piper = pack.id; renderVoiceSettings(); selectModel('piper'); setView('models'); notify('Piper voice stored. Preview it, then choose Use this voice.'); }
   catch (error) { showError(error, () => void addPiperVoice(files)); }
 }
@@ -694,6 +705,7 @@ async function backupLibrary(): Promise<void> {
   try { await positionWork; await downloadBackup(); notify('Library backup saved. Keep it in your own storage.'); } catch (error) { showError(error, () => void backupLibrary()); } finally { button.disabled = false; }
 }
 async function restoreFromFile(file: File): Promise<void> {
+  if (agreementRequired(() => void restoreFromFile(file))) return;
   if (libraryBusy()) return notify('Please wait while your library is updated.'); importing = true; restoringBooks = true; paintLibraryBusy();
   try { cancelPreview(); await previewTask; await unloadBook(); notify('Restoring books on this device…'); const count = await restoreBackup(file); await refreshLibrary(); notify(count + ' book' + (count === 1 ? '' : 's') + ' restored.'); }
   catch (error) { await refreshLibrary().catch(() => {}); showError(error, () => void restoreFromFile(file)); } finally { importing = false; restoringBooks = false; paintLibraryBusy(); }
@@ -729,7 +741,13 @@ function readSettings(): Settings {
 }
 function persistSettings(): void { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { notify('This browser could not save appearance and voice preferences.'); } }
 function currentSettings() { return { model: settings.model, voice: settings.voices[settings.model] || modelById(settings.model).voices[0].id, speed: settings.speed }; }
-function chooseBook(): void { if (libraryBusy()) return notify('Please wait while your library is updated.'); el<HTMLInputElement>('#file-picker').click(); }
+function chooseBook(): void {
+  if (libraryBusy()) return notify('Please wait while your library is updated.');
+  requestFileAccess('books', () => {
+    if (libraryBusy()) return notify('Please wait while your library is updated.');
+    el<HTMLInputElement>('#file-picker').click();
+  });
+}
 function formatBytes(size: number): string { if (!size) return '0 KB'; if (size >= 1073741824) return (size / 1073741824).toFixed(1) + ' GB'; return size < 1048576 ? Math.max(1, Math.round(size / 1024)) + ' KB' : (size / 1048576).toFixed(1) + ' MB'; }
 function el<T extends HTMLElement = HTMLElement>(selector: string): T { return document.querySelector<T>(selector)!; }
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', value?: string): HTMLElementTagNameMap[K] { const target = document.createElement(tag); target.className = className; if (value !== undefined) target.textContent = value; return target; }

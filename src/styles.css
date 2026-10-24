@@ -420,3 +420,36 @@ body[data-view='reader'][data-reader-focus='true'] .player { bottom: 0; }
   .pdf-zoom { max-width: 90px; width: 90px; }
   .pdf-page-number { width: 38px; }
 }
+
+/* Offline policy documents use the same readable sheet as reader preferences. */
+.privacy-note > .button { margin-top: 8px; padding-inline: 0; font-size: 11px; justify-content: flex-start; text-align: left; }
+.privacy-settings-card { padding: 24px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.privacy-settings-card > p { margin: 10px 0 16px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.policy-dialog { width: min(680px, calc(100vw - 24px)); padding: 24px; }
+.policy-dialog .dialog-description { margin-bottom: 12px; }
+.policy-publisher { display: grid; gap: 4px; margin-bottom: 16px; font-size: 12px; line-height: 1.6; }
+.policy-publisher span { color: var(--muted); }
+.policy-documents { max-height: 42dvh; overflow-y: auto; overscroll-behavior: contain; padding: 0 10px 0 0; border-block: 1px solid var(--border); }
+.policy-documents details { border-bottom: 1px solid var(--border); }
+.policy-documents details:last-child { border: 0; }
+.policy-documents summary { cursor: pointer; padding: 16px 4px; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.policy-documents summary:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.policy-copy { padding: 0 4px 20px; font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
+.policy-copy h3 { margin: 20px 0 6px; font: 600 14px/1.5 Inter, system-ui, sans-serif; }
+.policy-copy h3:first-child { margin-top: 2px; }
+.policy-status { margin: 12px 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.agreement-form { display: grid; gap: 8px; }
+.agreement-form label, .remember-explanation { display: flex; align-items: center; gap: 12px; min-height: 48px; font-size: 13px; line-height: 1.6; cursor: pointer; }
+.agreement-form input, .remember-explanation input { width: 22px; height: 22px; min-width: 22px; margin: 0; accent-color: var(--accent); }
+.agreement-form .button { width: 100%; margin-top: 8px; }
+.policy-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.policy-actions > .button { font-size: 12px; }
+.policy-version { display: block; margin-top: 12px; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.access-note { margin: 0 0 14px; padding: 12px; border-radius: 8px; background: var(--sage); color: var(--sage-text); font-size: 13px; line-height: 1.6; }
+@media (max-width: 760px) {
+  .policy-dialog { padding: 20px; max-height: calc(100dvh - 24px); }
+  .policy-documents { max-height: 34dvh; }
+  .policy-copy { font-size: 14px; }
+  .policy-publisher { font-size: 11px; }
+  .privacy-settings-card { padding: 20px; }
+}
