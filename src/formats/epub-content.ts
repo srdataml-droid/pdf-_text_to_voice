@@ -4,6 +4,7 @@ import { sentenceSegments } from './segments';
 
 type EpubSection = {
   href: string;
+  unload: () => void;
   load: (request: (url: string, type?: string) => Promise<unknown>) => Promise<Element>;
 };
 
@@ -37,34 +38,36 @@ export async function parseEpub(book: BookRecord): Promise<ParsedBook> {
 
     for (const [chapterIndex, section] of epubBook.spine.spineItems.entries()) {
       if (remotePath(section.href)) continue;
-      const document = await section.load(localLoad) as Element;
-      document.querySelectorAll('script,style,noscript,svg,iframe,object,embed').forEach(node => node.remove());
-      let legacy: ReadableSegment[] | undefined;
-      if (legacyIndexMap) {
-        const oldBlocks = [...document.querySelectorAll(LEGACY_BLOCKS)]
-          .filter(node => !node.parentElement?.closest(LEGACY_BLOCKS));
-        const text = oldBlocks.length ? oldBlocks.map(node => node.textContent ?? '').join('\n\n') :
-          document.querySelector('body')?.textContent ?? document.textContent ?? '';
-        legacy = sentenceSegments(text, 'epub-' + chapterIndex, 'Chapter ' + (chapterIndex + 1));
-      }
-      document.querySelectorAll('script,style,noscript,svg,iframe,object,embed,img,picture,audio,video,form,[hidden],[aria-hidden="true"]').forEach((node) => node.remove());
-      const blocks = [...document.querySelectorAll(BLOCKS)].filter((node) => !node.parentElement?.closest(BLOCKS));
-      const sectionPath = pathKey(epubBook.resolve(section.href));
-      const chapterTitle = navigation.find(item => pathKey(item.path) === sectionPath)?.title ||
-        cleanText(document.querySelector('h1,h2')?.textContent ?? '') || undefined;
-      const locationLabel = chapterTitle || 'Chapter ' + (chapterIndex + 1);
-      const start = segments.length;
-      let passageIndex = 0;
-      const addBlock = (text: string, heading: boolean, blockIndex: number) => {
-        for (const segment of sentenceSegments(cleanText(text), 'epub-' + chapterIndex, locationLabel)) {
-          segments.push({ ...segment, id: 'epub-' + chapterIndex + '-' + passageIndex++,
-            chapterTitle, kind: heading ? 'heading' : 'paragraph', blockId: 'epub-' + chapterIndex + '-block-' + blockIndex });
+      try {
+        const document = await section.load(localLoad) as Element;
+        document.querySelectorAll('script,style,noscript,svg,iframe,object,embed').forEach(node => node.remove());
+        let legacy: ReadableSegment[] | undefined;
+        if (legacyIndexMap) {
+          const oldBlocks = [...document.querySelectorAll(LEGACY_BLOCKS)]
+            .filter(node => !node.parentElement?.closest(LEGACY_BLOCKS));
+          const text = oldBlocks.length ? oldBlocks.map(node => node.textContent ?? '').join('\n\n') :
+            document.querySelector('body')?.textContent ?? document.textContent ?? '';
+          legacy = sentenceSegments(text, 'epub-' + chapterIndex, 'Chapter ' + (chapterIndex + 1));
         }
-      };
-      if (blocks.length) blocks.forEach((node, blockIndex) => addBlock(node.textContent ?? '', /^h[1-6]$/i.test(node.tagName), blockIndex));
-      else addBlock(document.querySelector('body')?.textContent ?? document.textContent ?? '', false, 0);
-      if (chapterTitle && segments.length > start) chapters.push({ title: chapterTitle, index: start });
-      if (legacy && legacyIndexMap) legacyIndexMap.push(...mapLegacyChapter(legacy, segments.slice(start), start));
+        document.querySelectorAll('script,style,noscript,svg,iframe,object,embed,img,picture,audio,video,form,[hidden],[aria-hidden="true"]').forEach((node) => node.remove());
+        const blocks = [...document.querySelectorAll(BLOCKS)].filter((node) => !node.parentElement?.closest(BLOCKS));
+        const sectionPath = pathKey(epubBook.resolve(section.href));
+        const chapterTitle = navigation.find(item => pathKey(item.path) === sectionPath)?.title ||
+          cleanText(document.querySelector('h1,h2')?.textContent ?? '') || undefined;
+        const locationLabel = chapterTitle || 'Chapter ' + (chapterIndex + 1);
+        const start = segments.length;
+        let passageIndex = 0;
+        const addBlock = (text: string, heading: boolean, blockIndex: number) => {
+          for (const segment of sentenceSegments(cleanText(text), 'epub-' + chapterIndex, locationLabel)) {
+            segments.push({ ...segment, id: 'epub-' + chapterIndex + '-' + passageIndex++,
+              chapterTitle, kind: heading ? 'heading' : 'paragraph', blockId: 'epub-' + chapterIndex + '-block-' + blockIndex });
+          }
+        };
+        if (blocks.length) blocks.forEach((node, blockIndex) => addBlock(node.textContent ?? '', /^h[1-6]$/i.test(node.tagName), blockIndex));
+        else addBlock(document.querySelector('body')?.textContent ?? document.textContent ?? '', false, 0);
+        if (chapterTitle && segments.length > start) chapters.push({ title: chapterTitle, index: start });
+        if (legacy && legacyIndexMap) legacyIndexMap.push(...mapLegacyChapter(legacy, segments.slice(start), start));
+      } finally { section.unload(); }
     }
 
     const title = epubBook.packaging?.metadata?.title?.trim() || book.title;

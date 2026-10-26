@@ -8,10 +8,8 @@ import android.os.*;
 import android.util.Log;
 import androidx.core.content.ContextCompat;
 import com.k2fsa.sherpa.onnx.*;
-import org.json.*;
 import java.io.*;
 import java.lang.ref.WeakReference;
-import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.*;
 import java.util.concurrent.*;
@@ -36,7 +34,7 @@ public class ReaderPlaybackService extends Service {
     private AudioFocusRequest focusRequest;
     private PowerManager.WakeLock wakeLock;
     private boolean resumeOnFocus;
-    private String state = "stopped", bookId = "", title = "Novaxis Reader", error = "";
+    private String state = "stopped", bookId = "", planId = "", title = "Novaxis Reader", error = "";
     private int position;
     private long rawHead, headWrap;
     private AudioTrack headTrack;
@@ -69,6 +67,9 @@ public class ReaderPlaybackService extends Service {
         volatile float speed;
         volatile int nextIndex;
         volatile long written;
+        volatile String failure;
+        final PlaybackWatchdog watchdog = new PlaybackWatchdog(SystemClock.elapsedRealtime(), 120000);
+        long lastHead;
         Session(int index, float speed) { this.nextIndex = index; this.speed = speed; }
     }
 
@@ -105,13 +106,13 @@ public class ReaderPlaybackService extends Service {
         switch (intent.getAction() == null ? "" : intent.getAction()) {
             case "start":
                 String filename = intent.getStringExtra("plan");
-                if (filename == null || !filename.matches("narration-[A-Za-z0-9-]+\\.json")) {
+                if (filename == null || !filename.matches("narration-[a-f0-9-]+")) {
                     if (session == null) stopReading();
                     break;
                 }
-                File plan = new File(getCacheDir(), filename);
+                File plan = new File(ReaderPlaybackPlugin.plansDir(this), filename);
                 if (!ReaderPlaybackPlugin.isCurrentCommand(intent.getLongExtra("command", -1))) {
-                    plan.delete();
+                    NarrationPlan.delete(plan);
                     if (session == null) stopReading();
                     break;
                 }
@@ -125,60 +126,84 @@ public class ReaderPlaybackService extends Service {
         return START_NOT_STICKY;
     }
 
-    private volatile JSONArray passages;
+    private volatile File planFolder;
+    private volatile int passageCount;
+    boolean usesPlan(File folder) { return folder.equals(planFolder); }
+    private void releasePlan() {
+        File old = planFolder; planFolder = null; passageCount = 0;
+        if (old != null) synthesis.submit(() -> NarrationPlan.delete(old));
+    }
     private void begin(File plan, int index, float speed) {
-        cancelSession(); passages = null; position = index; error = "";
+        cancelSession(); releasePlan(); planFolder = plan; planId = plan.getName(); passageCount = (int) (new File(plan, "index.bin").length() / 8); position = index; error = "";
         Session next = new Session(index, clampSpeed(speed)); session = next;
         publish("loading");
         if (!takeFocus()) { fail(next, "Audio focus is unavailable. Close other audio and try Play again."); return; }
         holdCpu();
         producer = synthesis.submit(() -> {
             try {
-                if (!plan.getCanonicalPath().startsWith(getCacheDir().getCanonicalPath() + File.separator + "narration-")) throw new IOException("Invalid narration plan");
-                JSONArray values = new JSONObject(readText(plan)).getJSONArray("segments");
-                plan.delete();
-                if (!owns(next)) return;
-                passages = values;
-                if (index < 0 || index >= values.length()) throw new IOException("The reading position is outside this book.");
-                ensureEngine();
-                produce(next, values, index);
-            } catch (Exception | LinkageError ex) { fail(next, "Piper could not prepare this passage. Retry Play or choose another voice."); }
-            finally { plan.delete(); }
+                if (!plan.getCanonicalFile().getParentFile().equals(ReaderPlaybackPlugin.plansDir(this).getCanonicalFile())) throw new IOException("Invalid narration plan");
+                try (NarrationPlan values = new NarrationPlan(plan)) {
+                    if (!owns(next)) return;
+                    if (index < 0 || index >= values.size()) throw new IOException("The reading position is outside this book.");
+                    produce(next, values, index);
+                }
+            } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            catch (Exception | LinkageError ex) { queueFailure(next, "Piper could not prepare this book. Check local storage and retry Play."); }
         });
         startWriter(next);
     }
 
     public void seek(int index) {
-        JSONArray values = passages;
-        Session old = session;
-        if (values == null || old == null) return;
-        index = Math.max(0, Math.min(index, values.length() - 1));
+        File folder = planFolder; Session old = session;
+        if (folder == null || old == null || passageCount == 0) return;
+        index = Math.max(0, Math.min(index, passageCount - 1));
         float speed = old.speed;
         cancelSession(); position = index; error = "";
         Session next = new Session(index, speed); session = next;
         publish("loading");
         if (!takeFocus()) { fail(next, "Audio focus is unavailable. Try Play again."); return; }
-        holdCpu();
-        final int start = index;
+        holdCpu(); final int start = index;
         producer = synthesis.submit(() -> {
-            try { ensureEngine(); produce(next, values, start); }
-            catch (Exception | LinkageError ex) { fail(next, "Piper could not read this passage. Try Play again."); }
+            try (NarrationPlan values = new NarrationPlan(folder)) { produce(next, values, start); }
+            catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            catch (Exception | LinkageError ex) { queueFailure(next, "The stored narration plan could not be read. Retry Play from your saved place."); }
         });
         startWriter(next);
     }
 
-    private void produce(Session own, JSONArray values, int start) throws Exception {
-        for (int i = start; i < values.length() && owns(own); i++) {
+    private void produce(Session own, NarrationPlan values, int start) throws Exception {
+        for (int i = start; i < values.size() && owns(own); i++) {
+            awaitResume(own);
+            if (!owns(own)) return;
             own.nextIndex = i;
-            String text = Normalizer.normalize(values.getJSONObject(i).getString("text"), Normalizer.Form.NFKC)
+            String text = Normalizer.normalize(values.text(i), Normalizer.Form.NFKC)
                 .replaceAll("[\\u00ad\\u200b\\ufeff]", "").replaceAll("\\s+", " ").trim();
-            if (!text.matches("(?s).*?[\\p{L}\\p{N}].*")) continue;
-            GeneratedAudio audio = engine.generateWithCallback(text, 0, own.speed, samples -> owns(own) ? 1 : 0);
+            if (!text.matches("(?s).*?[\\p{L}\\p{N}].*")) { own.watchdog.progress(SystemClock.elapsedRealtime()); continue; }
+            GeneratedAudio audio;
+            try {
+                audio = SpeechRecovery.run(() -> {
+                    awaitResume(own);
+                    if (!owns(own)) throw new InterruptedException();
+                    ensureEngine();
+                    GeneratedAudio result = engine.generateWithCallback(text, 0, own.speed, samples -> owns(own) ? 1 : 0);
+                    if (result.getSamples().length == 0 || result.getSampleRate() < 8000 || result.getSampleRate() > 48000 || result.getSamples().length > result.getSampleRate() * 90) throw new IOException("Empty speech result");
+                    return result;
+                }, () -> {
+                    Log.w("NovaxisPlayback", "Retrying speech at passage " + own.nextIndex);
+                    releaseEngine();
+                }, () -> owns(own));
+            } catch (InterruptedException cancelled) { throw cancelled; }
+            catch (Exception | LinkageError ex) {
+                // Drain already prepared speech before reporting a failed following passage.
+                Log.e("NovaxisPlayback", "Speech failure at passage " + own.nextIndex + ": " + ex.getClass().getSimpleName());
+                own.failure = "Piper could not read the next passage. Your place is saved; retry Play or choose another voice.";
+                own.done = true; return;
+            }
             if (!owns(own)) return;
             float[] samples = audio.getSamples();
-            if (samples.length == 0) throw new IOException("Empty speech result at passage " + i);
             short[] pcm = new short[samples.length];
             for (int j = 0; j < samples.length; j++) pcm[j] = (short) Math.round(Math.max(-1f, Math.min(1f, samples[j])) * 32767f);
+            own.watchdog.progress(SystemClock.elapsedRealtime());
             Clip clip = new Clip(i, pcm, audio.getSampleRate());
             while (owns(own) && !own.queue.offer(clip, 250, TimeUnit.MILLISECONDS)) { /* Bounded look-ahead. */ }
         }
@@ -196,7 +221,7 @@ public class ReaderPlaybackService extends Service {
                     if (clip == null) {
                         if (own.done && own.queue.isEmpty()) {
                             while (owns(own) && local != null && played(local) < own.written) { awaitResume(own); Thread.sleep(30); }
-                            if (owns(own)) main.post(() -> finish(own));
+                            if (owns(own)) main.post(() -> { if (own.failure != null) fail(own, own.failure); else finish(own); });
                             return;
                         }
                         if (local != null && played(local) >= own.written) main.post(() -> {
@@ -233,6 +258,9 @@ public class ReaderPlaybackService extends Service {
         });
     }
 
+    private void releaseEngine() {
+        if (engine != null) { engine.release(); engine = null; }
+    }
     private void ensureEngine() throws IOException {
         if (engine != null) return;
         File root = new File(getFilesDir(), "native-piper-1.13.8");
@@ -271,25 +299,28 @@ public class ReaderPlaybackService extends Service {
     public void resumeReading() {
         Session own = session; if (own == null || own.cancelled) return;
         if (!takeFocus()) { publish("paused"); return; }
-        holdCpu(); own.paused = false;
+        holdCpu(); own.watchdog.progress(SystemClock.elapsedRealtime()); own.paused = false;
         synchronized (stateLock) { if (track != null) track.play(); stateLock.notifyAll(); }
         publish(track == null ? "loading" : "playing");
     }
     public void speed(float value) { if (session != null) session.speed = clampSpeed(value); }
     public void stopReading() {
-        syncPosition(); cancelSession(); publish("stopped");
+        syncPosition(); cancelSession(); releasePlan(); publish("stopped");
         stopForeground(STOP_FOREGROUND_REMOVE); stopSelf();
     }
     private void finish(Session own) {
         if (!owns(own)) return;
-        if (passages != null) position = Math.max(0, passages.length() - 1);
-        cancelSession(); publish("ended"); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf();
+        position = Math.max(0, passageCount - 1);
+        cancelSession(); releasePlan(); publish("ended"); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf();
+    }
+    private void queueFailure(Session own, String message) {
+        if (owns(own)) { own.failure = message; own.done = true; }
     }
     private void fail(Session own, String message) {
         main.post(() -> {
             if (!owns(own)) return;
             syncPosition(); error = message; Log.e("NovaxisPlayback", "Narration failure near passage " + own.nextIndex);
-            cancelSession(); publish("error"); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf();
+            cancelSession(); releasePlan(); publish("error"); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf();
         });
     }
     private void cancelSession() {
@@ -319,6 +350,7 @@ public class ReaderPlaybackService extends Service {
         if (own == null || audio == null) return;
         long head;
         try { head = played(audio); } catch (IllegalStateException ex) { return; }
+        if (head > own.lastHead) { own.lastHead = head; own.watchdog.progress(SystemClock.elapsedRealtime()); }
         synchronized (stateLock) {
             while (own.markers.size() > 1 && own.markers.peek().end <= head) own.markers.remove();
             Marker marker = own.markers.peek();
@@ -330,7 +362,10 @@ public class ReaderPlaybackService extends Service {
         @Override public void run() {
             syncPosition();
             Session own = session;
-            if (own != null && !own.paused) holdCpu();
+            if (own != null) {
+                if (own.watchdog.expired(SystemClock.elapsedRealtime(), own.paused)) fail(own, "Narration made no progress for two minutes. Your place is saved. Press Play to retry.");
+                else if (!own.paused) holdCpu();
+            }
             main.postDelayed(this, 250);
         }
     };
@@ -357,7 +392,7 @@ public class ReaderPlaybackService extends Service {
     private void publish(String next) {
         state = next;
         long now = System.currentTimeMillis();
-        SharedPreferences.Editor saved = getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("bookId", bookId).putInt("index", position).putString("state", state).putString("error", error).putLong("savedAt", now);
+        SharedPreferences.Editor saved = getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("planId", planId).putString("bookId", bookId).putInt("index", position).putString("state", state).putString("error", error).putLong("savedAt", now);
         if (!bookId.isEmpty()) saved.putString("progress:" + bookId, "{\"index\":" + position + ",\"savedAt\":" + now + "}");
         saved.apply();
         Intent event = new Intent(STATE_EVENT).setPackage(getPackageName()); sendBroadcast(event);
@@ -382,20 +417,12 @@ public class ReaderPlaybackService extends Service {
             .addAction(new Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel, "Stop", action("stop", 2)).build())
             .setStyle(new Notification.MediaStyle().setMediaSession(mediaSession.getSessionToken()).setShowActionsInCompactView(0, 1)).build();
     }
-    private static String readText(File file) throws IOException {
-        if (file.length() > 32L * 1024 * 1024) throw new IOException("Book narration plan is too large");
-        try (InputStream in = new FileInputStream(file); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            byte[] bytes = new byte[65536]; int count;
-            while ((count = in.read(bytes)) != -1) out.write(bytes, 0, count);
-            return out.toString(StandardCharsets.UTF_8.name());
-        }
-    }
     @Override public IBinder onBind(Intent intent) { return null; }
     @Override public void onDestroy() {
-        main.removeCallbacksAndMessages(null); cancelSession();
+        main.removeCallbacksAndMessages(null); cancelSession(); releasePlan();
         try { unregisterReceiver(noisy); } catch (IllegalArgumentException ignored) {}
         mediaSession.release(); current.clear();
-        synthesis.submit(() -> { if (engine != null) { engine.release(); engine = null; } });
+        synthesis.submit(this::releaseEngine);
         synthesis.shutdown(); output.shutdownNow();
         stopForeground(STOP_FOREGROUND_REMOVE);
         super.onDestroy();

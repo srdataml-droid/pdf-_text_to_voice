@@ -17,7 +17,9 @@
     "check:playback": "node checks/playback.mjs",
     "check:launcher": "node checks/launcher.mjs",
     "package:portable": "npm run build && node scripts/package-portable.mjs",
-    "android:prepare": "python3 scripts/prepare-native-piper.py"
+    "android:prepare": "python3 scripts/prepare-native-piper.py",
+    "check:native": "sh checks/native-reader.sh",
+    "check:reader-reliability": "npm run check:native && node checks/native-bridge.mjs && node checks/epub-retention.mjs && npm run check:playback"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
