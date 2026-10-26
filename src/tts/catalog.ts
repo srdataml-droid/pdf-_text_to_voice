@@ -43,3 +43,14 @@ export function modelById(id: string): ModelOption {
   const model = modelCatalog.find((item) => item.id === id);
   return model ?? modelCatalog[0];
 }
+
+export const featuredVoices: { model: ModelId; id: string; name: string; accent: string }[] = [
+  { model: 'piper', id: 'en_US-lessac-medium', name: 'Lessac', accent: 'US English' },
+  { model: 'kokoro', id: 'af_heart', name: 'Heart', accent: 'US English' },
+  { model: 'kokoro', id: 'bm_george', name: 'George', accent: 'British English' },
+  { model: 'kitten-nano', id: 'luna', name: 'Luna', accent: 'English' },
+  { model: 'kitten-nano', id: 'jasper', name: 'Jasper', accent: 'English' },
+];
+export function voiceName(model: ModelId, id: string): string {
+  return featuredVoices.find(voice => voice.model === model && voice.id === id)?.name ?? modelById(model).voices.find(voice => voice.id === id)?.label.split(' · ')[0] ?? 'Local voice';
+}

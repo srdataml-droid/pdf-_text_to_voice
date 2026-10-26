@@ -398,7 +398,7 @@ public class ReaderPlaybackService extends Service {
         Intent event = new Intent(STATE_EVENT).setPackage(getPackageName()); sendBroadcast(event);
         int playback = state.equals("playing") ? PlaybackState.STATE_PLAYING : state.equals("loading") ? PlaybackState.STATE_BUFFERING : state.equals("paused") ? PlaybackState.STATE_PAUSED : state.equals("error") ? PlaybackState.STATE_ERROR : PlaybackState.STATE_STOPPED;
         mediaSession.setPlaybackState(new PlaybackState.Builder().setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_STOP | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS).setState(playback, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1).build());
-        mediaSession.setMetadata(new MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_TITLE, title).putString(MediaMetadata.METADATA_KEY_ARTIST, "Novaxis Reader · Piper").build());
+        mediaSession.setMetadata(new MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_TITLE, title).putString(MediaMetadata.METADATA_KEY_ARTIST, "Novaxis Reader · Lessac").build());
         if (!state.equals("stopped") && !state.equals("ended") && !state.equals("error")) ((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).notify(NOTIFICATION, notification());
     }
     private PendingIntent action(String command, int id) {
@@ -410,7 +410,7 @@ public class ReaderPlaybackService extends Service {
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
         boolean paused = state.equals("paused");
         return builder.setSmallIcon(android.R.drawable.ic_media_play).setContentTitle(title == null ? "Novaxis Reader" : title)
-            .setContentText(state.equals("loading") ? "Preparing offline narration…" : paused ? "Paused" : "Reading with Piper")
+            .setContentText(state.equals("loading") ? "Preparing offline narration…" : paused ? "Paused" : "Reading with Lessac")
             .setContentIntent(content).setVisibility(Notification.VISIBILITY_PRIVATE).setOnlyAlertOnce(true).setOngoing(!paused)
             .setCategory(Notification.CATEGORY_TRANSPORT)
             .addAction(new Notification.Action.Builder(paused ? android.R.drawable.ic_media_play : android.R.drawable.ic_media_pause, paused ? "Play" : "Pause", action(paused ? "resume" : "pause", 1)).build())

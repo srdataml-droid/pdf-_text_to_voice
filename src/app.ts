@@ -5,12 +5,12 @@ import { parseTxt } from './formats/txt-content';
 import { deleteBooks, getBook, getProgress, listBooks, listReadingProgress, saveProgress, updateBookMetadata } from './storage/book-store';
 import { importBookFiles, type BookImportResult } from './library/book-import';
 import { getDeviceStorageInfo, openAppStorageSettings, keepReadingScreenAwake } from './storage/device-storage';
-import { modelById, modelCatalog, type ModelId } from './tts/catalog';
+import { modelById, modelCatalog, featuredVoices, voiceName, type ModelId } from './tts/catalog';
 import { createSpeechEngine } from './tts/engine-factory';
 import { PlaybackController } from './reader/playback-controller';
 import { androidReader, usesNativePiper } from './reader/native-piper';
 import { PdfPageView } from './reader/pdf-page-view';
-import { bindPlaybackControls } from './reader/playback-controls';
+import { bindPlaybackControls, normalizedSpeed, paintSpeed } from './reader/playback-controls';
 import { listPiperPacks, importPiperPack, deletePiperPack } from './storage/voice-packs';
 import { downloadBackup, restoreBackup } from './settings/backup-view';
 import { renderShell } from './ui/shell';
@@ -80,7 +80,7 @@ export async function startApp(): Promise<void> {
     toggle: () => void togglePlayback(),
     previous: () => void jumpTo(index - 1),
     next: () => void jumpTo(index + 1),
-    speed: value => { settings.speed = value; persistSettings(); text('#speed-value', value.toFixed(2) + '×'); player.setSettings(currentSettings()); },
+    speed: value => { settings.speed = normalizedSpeed(value); persistSettings(); paintSpeed(settings.speed); player.setSettings(currentSettings()); },
   });
   app!.addEventListener('click', event => {
     const target = (event.target as Element).closest<HTMLElement>('[data-view],[data-action],[data-theme]');
@@ -93,6 +93,7 @@ export async function startApp(): Promise<void> {
     }
     if (target.dataset.theme) { settings.theme = target.dataset.theme as Settings['theme']; applyAppearance(); persistSettings(); }
   });
+  document.querySelectorAll<HTMLDetailsElement>('.reader-menu').forEach(menu => menu.addEventListener('click', event => { if ((event.target as Element).closest('button')) menu.open = false; }));
   on('#follow-voice', 'click', () => { settings.follow = !settings.follow; applyAppearance(); persistSettings(); if (settings.follow) revealPosition(); });
   on('#chapters-toggle', 'click', () => { renderChapters(); showDialog('#chapters'); });
   on('#preferences-toggle', 'click', () => showDialog('#preferences'));
@@ -107,7 +108,7 @@ export async function startApp(): Promise<void> {
     const expanded = el('#spoken-toggle').getAttribute('aria-expanded') !== 'true';
     el('#spoken-toggle').setAttribute('aria-expanded', String(expanded));
     el('#spoken-passage').hidden = !expanded;
-    text('#spoken-toggle', expanded ? 'Hide text' : 'Show text');
+    text('#spoken-toggle', expanded ? 'Hide spoken text' : 'Show spoken text'); document.body.dataset.spokenText = String(expanded);
     pdfView?.refresh();
   });
   on('#reading-font', 'input', event => { settings.fontSize = Number((event.currentTarget as HTMLInputElement).value); applyAppearance(); persistSettings(); });
@@ -186,7 +187,7 @@ function applyAppearance(): void {
   el<HTMLSelectElement>('#reading-width').value = settings.width;
   document.querySelectorAll<HTMLElement>('[data-theme]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.theme === settings.theme)));
   el('#follow-voice').setAttribute('aria-pressed', String(settings.follow));
-  el<HTMLInputElement>('#speed').value = String(settings.speed); text('#speed-value', settings.speed.toFixed(2) + '×');
+  settings.speed = normalizedSpeed(settings.speed); paintSpeed(settings.speed);
 }
 
 async function refreshLibrary(): Promise<void> {
@@ -531,7 +532,7 @@ function paintPosition(): void {
   const narration = el('#narration-strip');
   narration.dataset.state = playbackState;
   const chosen = currentSettings();
-  text('#narration-voice', modelById(chosen.model).label + ' · ' + (modelById(chosen.model).voices.find(voice => voice.id === chosen.voice)?.label ?? 'Local voice'));
+  text('#narration-voice', voiceName(chosen.model, chosen.voice)); text('#player-voice-name', voiceName(chosen.model, chosen.voice));
   text('#narration-state', playbackState === 'playing' ? 'Reading continuously' : playbackState === 'loading' ? 'Preparing the next passage' : playbackState === 'paused' ? 'Paused · your place is saved' : playbackState === 'ended' ? 'Book complete' : 'Ready to read');
   text('#spoken-passage', content?.segments[index]?.text ?? 'Press play to listen and follow the words here.');
   narration.style.setProperty('--book-progress', (content?.segments.length ? (index + 1) / content.segments.length * 100 : 0) + '%');
@@ -554,6 +555,7 @@ function renderVoiceSettings(): void {
   el<HTMLSelectElement>('#model').replaceChildren(...modelCatalog.map(item => new Option(item.label, item.id))); el<HTMLSelectElement>('#model').value = draftModel; fillVoices(); renderModels();
 }
 function renderModels(): void {
+  renderFeaturedVoices();
   const list = el('#model-cards'); list.replaceChildren();
   for (const model of modelCatalog) {
     const button = action('', 'model-card', () => selectModel(model.id)); button.setAttribute('aria-label', 'Choose ' + model.label); button.setAttribute('aria-pressed', String(model.id === settings.model));
@@ -562,6 +564,29 @@ function renderModels(): void {
     const bytes = packManifest?.models.find(item => item.id === model.id)?.bytes;
     const foot = node('div', 'model-foot'); foot.append(node('span', '', model.voices.length + ' voices'), node('span', '', bytes === undefined ? 'Included locally' : formatBytes(bytes) + ' on disk'), node('span', 'local-badge', model.id === settings.model ? 'In use' : 'Choose voices →'));
     button.append(top, foot); list.append(button);
+  }
+}
+function renderFeaturedVoices(): void {
+  const list = el('#featured-voice-list'); list.replaceChildren();
+  for (const voice of featuredVoices) {
+    const selected = voice.model === draftModel && voice.id === draftVoices[draftModel];
+    const button = action('', 'featured-voice', () => {
+      const pick = () => {
+        cancelPreview();
+        const previous = previewTask; const request = previewVersion;
+        draftModel = voice.model; draftVoices[voice.model] = voice.id;
+        fillVoices(); renderFeaturedVoices();
+        const task = Promise.resolve(previous).then(() => { if (request === previewVersion) return tryVoice(); });
+        previewTask = task;
+        void task.finally(() => { if (previewTask === task) previewTask = undefined; });
+      };
+      if (!agreementRequired(pick)) pick();
+    });
+    button.setAttribute('aria-pressed', String(selected)); button.setAttribute('aria-label', 'Hear ' + voice.name);
+    const avatar = node('span', 'voice-avatar', voice.name[0]); avatar.setAttribute('aria-hidden', 'true');
+    const meta = node('span', 'featured-voice-meta');
+    meta.append(node('strong', '', voice.name), node('small', '', voice.accent), node('small', 'voice-capability', voice.model === 'piper' ? 'Screen-off reading on Android' : 'Keep reader open'));
+    button.append(avatar, meta, node('span', 'voice-listen', selected ? 'Selected · ♫' : 'Listen ♫')); list.append(button);
   }
 }
 function fillVoices(): void {
@@ -575,8 +600,8 @@ function fillVoices(): void {
     button.append(node('strong', '', voice.label), node('small', '', voice.id.startsWith('local:') ? 'Imported on this device' : 'Included on this device')); list.append(button);
   }
 }
-function selectModel(model: ModelId): void { cancelPreview(); draftModel = model; el<HTMLSelectElement>('#model').value = model; el('#model-stage').hidden = true; el('#voice-stage').hidden = false; fillVoices(); }
-function selectVoice(voice: string): void { cancelPreview(); draftVoices[draftModel] = voice; fillVoices(); }
+function selectModel(model: ModelId): void { cancelPreview(); draftModel = model; el<HTMLSelectElement>('#model').value = model; el('#model-stage').hidden = true; el('#voice-stage').hidden = false; fillVoices(); renderFeaturedVoices(); }
+function selectVoice(voice: string): void { cancelPreview(); draftVoices[draftModel] = voice; fillVoices(); renderFeaturedVoices(); }
 async function useVoice(): Promise<void> {
   cancelPreview(); await previewTask;
   settings.model = draftModel; settings.voices = { ...draftVoices }; persistSettings(); player.setSettings(currentSettings()); renderModels();
@@ -584,22 +609,24 @@ async function useVoice(): Promise<void> {
 }
 async function tryVoice(): Promise<void> {
   const version = ++previewVersion; const selection = { model: draftModel, voice: draftVoices[draftModel], speed: settings.speed };
+  const name = voiceName(selection.model, selection.voice);
+  text('#voice-preview-status', 'Preparing ' + name + '…');
   const button = el<HTMLButtonElement>('#try-voice'); button.disabled = true; button.textContent = 'Preparing voice…';
-  let engine: Awaited<ReturnType<typeof createSpeechEngine>> | undefined; let url = '';
+  let engine: Awaited<ReturnType<typeof createSpeechEngine>> | undefined; let url = ''; let completed = false;
   try {
     // Release narration before auditioning another engine to limit memory use.
     await player.stop(); if (version !== previewVersion) return;
     engine = await createSpeechEngine(selection.model); await engine.initialize(selection.voice);
     if (version !== previewVersion) return;
-    const clip = await engine.synthesize('A quiet voice can make reading feel easier. Your books, your voice, and your own space to think.', selection.speed);
+    const clip = await engine.synthesize("Hi, I'm " + name + '.', 1);
     if (version !== previewVersion) return;
     url = URL.createObjectURL(clip); const preview = new Audio(url); previewAudio = preview;
-    await new Promise<void>((resolve, reject) => { preview.onended = () => resolve(); preview.onerror = () => reject(new Error('This device could not play the generated audio.')); preview.play().then(() => { button.textContent = 'Playing preview…'; }).catch(reject); });
+    await new Promise<void>((resolve, reject) => { preview.onended = () => resolve(); preview.onerror = () => reject(new Error('This device could not play the generated audio.')); preview.play().then(() => { button.textContent = 'Playing preview…'; text('#voice-preview-status', 'Listening to ' + name + '…'); }).catch(reject); }); completed = true;
   } catch (error) { if (version === previewVersion) showError(error, () => el<HTMLButtonElement>('#try-voice').click()); }
   finally {
     if (url) URL.revokeObjectURL(url); previewAudio = undefined;
     try { await engine?.dispose(); } catch (error) { if (version === previewVersion) showError(error); }
-    button.disabled = false; button.innerHTML = icon('headphones') + 'Preview voice';
+    button.disabled = false; button.innerHTML = icon('headphones') + 'Preview voice'; if (version === previewVersion) text('#voice-preview-status', completed ? name + ' · ready to use' : 'Preview stopped. Tap a name to try again.');
   }
 }
 function cancelPreview(): void { previewVersion++; if (previewAudio) { previewAudio.pause(); previewAudio.dispatchEvent(new Event('ended')); } }
@@ -736,7 +763,7 @@ function readSettings(): Settings {
     const voices = saved.voices && typeof saved.voices === 'object' && !Array.isArray(saved.voices) ? saved.voices : defaults.voices;
     // Apply the requested Piper default once on upgrade, then remember later voice choices.
     return { ...defaults, model: saved.narrationDefaults === 2 ? saved.model : 'piper', voices: { ...voices, ...(saved.narrationDefaults === 2 ? {} : defaults.voices) },
-      speed: Math.max(.7, Math.min(2, Number(saved.speed) || 1)), theme: saved.theme === 'dark' ? 'dark' : 'paper', fontSize: Math.max(16, Math.min(32, Number(saved.fontSize) || 22)),
+      speed: normalizedSpeed(Number(saved.speed) || 1), theme: saved.theme === 'dark' ? 'dark' : 'paper', fontSize: Math.max(16, Math.min(32, Number(saved.fontSize) || 22)),
       spacing: [1.5, 1.75, 2].includes(saved.spacing) ? saved.spacing : 1.75, width: saved.width === 'wide' ? 'wide' : 'narrow', follow: saved.follow !== false };
   } catch { return defaults; }
 }
