@@ -1,4 +1,4 @@
-# Physical-device listening checks — v1.4.1
+# Physical-device listening checks — v1.4.2
 
 The automated checks use synthetic text and simulated audio timing. Complete these with bundled Piper Lessac on the actual phone before describing screen-off reliability as verified. Read/choose the updated agreement yourself. No one needs to collect or open your personal books for the checks.
 

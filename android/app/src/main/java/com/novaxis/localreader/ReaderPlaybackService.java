@@ -185,7 +185,7 @@ public class ReaderPlaybackService extends Service {
                     awaitResume(own);
                     if (!owns(own)) throw new InterruptedException();
                     ensureEngine();
-                    GeneratedAudio result = engine.generateWithCallback(text, 0, own.speed, samples -> owns(own) ? 1 : 0);
+                    GeneratedAudio result = engine.generateWithCallback(text, 0, own.speed, new PiperSynthesisCallback(() -> owns(own)));
                     if (result.getSamples().length == 0 || result.getSampleRate() < 8000 || result.getSampleRate() > 48000 || result.getSamples().length > result.getSampleRate() * 90) throw new IOException("Empty speech result");
                     return result;
                 }, () -> {

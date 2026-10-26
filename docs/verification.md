@@ -1,3 +1,13 @@
+## Confirmed native Piper crash repair — 26 October 2026 (v1.4.2)
+
+The user reported being kicked out of v1.4.1. Connected-device crash logs confirmed two fatal SIGABRT events in `OfflineTts.generateWithCallbackImpl`: `JNI DETECTED ERROR IN APPLICATION` with pending `NoSuchMethodError` for callback `invoke([F)Ljava/lang/Integer;`. This identified a callback ABI mismatch in the new native integration. The generic Java lambda did not expose the specialized float-array/Integer method that this sherpa-onnx JNI version looks up. The prior 22 synthetic checks did not exercise that native boundary.
+
+A small JVM reproduction using the old lambda failed the same specialized method lookup. Replaced it with concrete `PiperSynthesisCallback`, declaring `public Integer invoke(float[])` and preserving it with a ProGuard keep rule. Added reflection/cancellation regression coverage and a real Android instrumentation smoke test. Kotlin dependency versions for the app and app tests are aligned with the existing 2.1.20 runtime.
+
+All 23 local reliability checks passed. App-scoped debug and Android-test builds succeeded. Version 1.4.2 (code 9) was installed as an update. On the connected physical phone, `PiperNativeSmokeTest.typedCallbackGeneratesRealSpeechWithoutAborting` passed in 5.233 seconds: the actual bundled native Piper runtime generated three fixed synthetic passages, returned nonempty finite 22,050 Hz audio and invoked the callback at least three times. The smoke test does not play audio or open user documents. Temporary test assets are cleaned by the test. No book contents were read for crash diagnosis or testing.
+
+This confirms repair of the observed callback crash and successful native speech generation on this phone. Sustained locked-screen reading, playback controls, audio interruptions and chapter 27 remain pending the user's listening check. The new smoke test does not establish those broader playback properties.
+
 ## Long-book reliability pass — 26 October 2026 (v1.4.1)
 
 Confirmed source-level risks: v1.4 transferred all book text in one bridge message and reconstructed it as one native JSON object; EPUB sections retained their loaded documents until book destruction; native generation errors immediately cleared already queued speech; and an unresponsive player had no progress timeout. The existing web playback checks still simulated the old HTMLAudioElement player and failed with `AudioContext is not defined`, so they were updated to exercise the current Web Audio scheduling path with a controlled clock.

@@ -19,3 +19,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Native sherpa-onnx looks up this concrete method by name and exact JNI descriptor.
+-keep class com.novaxis.localreader.PiperSynthesisCallback { *; }

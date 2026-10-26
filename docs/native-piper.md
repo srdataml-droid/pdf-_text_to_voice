@@ -1,8 +1,14 @@
-# Android native Piper — 1.4.1
+# Android native Piper — 1.4.2
 
 Bundled Lessac narration runs in `ReaderPlaybackService`, independently of the Activity/WebView. One native engine configured with two CPU worker threads feeds a three-clip PCM16 queue; one streaming AudioTrack consumes it. Passage markers follow the audio playback head rather than generation completion. Pause keeps the in-session track position. A CPU wake lock runs only during preparation/playback, and a MediaSession exposes Play/Pause/Stop plus transport callbacks. Calls and headphone removal pause playback. Saved positions remain passage based.
 
 The bridge sends at most 128 passages per call. The service reads a temporary private binary text plan with an on-disk offset index, one passage at a time. The plan remains in private app files during playback/pause and is scheduled for deletion after stop, completion, failure or service destruction. Cleanup runs after pending native work releases its reader. Interrupted plans older than 24 hours are cleaned on a later app launch; active plans are excluded. The files are outside cache to avoid cache eviction during reading. Capacitor bridge argument logging is disabled so the narration plan is not printed in debug logs. Native progress is saved separately in app preferences; opening the book restores whichever saved position is newer. Stop cancels synthesis/output and releases audio, focus and wake resources. Engine destruction is serialized after pending native work. Native completion is book-wide; page/chapter boundaries are not stop points.
+
+## JNI callback compatibility
+
+sherpa-onnx 1.13.8 Android JNI resolves callback method `invoke([F)Ljava/lang/Integer;`. A Java lambda implementing generic Kotlin `Function1` exposes only the erased `invoke(Object): Object` method. In 1.4.1 that mismatch caused `NoSuchMethodError`, followed by a fatal CheckJNI abort; normal exception retries cannot intercept that process abort. `PiperSynthesisCallback` now declares `Integer invoke(float[])` explicitly, and the ProGuard keep rule preserves the class/method for future shrinking. A JVM reflection regression and a real-device instrumentation smoke test cover this boundary.
+
+The phone-side smoke test uses temporary bundled voice assets and three fixed synthetic passages, verifies nonempty finite speech at 22,050 Hz and actual callback execution, then releases the native engine and deletes its temporary assets. It does not open the library, read user books or play sound. Screen-off AudioTrack/service continuity remains a separate listening check.
 
 ## Recovery and bounds
 

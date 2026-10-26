@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Synthetic text only. Run on a plain JVM with a 32 MB heap; no Android/device dependencies. */
 public class ReaderReliabilityCheck {
@@ -15,6 +16,15 @@ public class ReaderReliabilityCheck {
     public static void main(String[] args) throws Exception {
         File root = Files.createTempDirectory("synthetic-reader-check-").toFile();
         try {
+            check("JNI callback exposes exact float-array / Integer signature and cancellation", () -> {
+                AtomicBoolean active = new AtomicBoolean(true);
+                PiperSynthesisCallback callback = new PiperSynthesisCallback(active::get);
+                var method = callback.getClass().getMethod("invoke", float[].class);
+                require(method.getReturnType() == Integer.class);
+                require(method.invoke(callback, new Object[] { new float[] { .1f } }).equals(1));
+                active.set(false);
+                require(method.invoke(callback, new Object[] { new float[0] }).equals(0));
+            });
             check("1,000 chapters / 201,000 passages exceed old text/count limits with a 32 MB heap", () -> {
                 File folder = new File(root, "large");
                 String body = "synthetic passage ".repeat(14);
