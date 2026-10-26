@@ -2,10 +2,12 @@ import type { ReadableSegment } from '../domain/book';
 import type { ModelId } from '../tts/catalog';
 import { createSpeechEngine } from '../tts/engine-factory';
 import type { SpeechEngine } from '../tts/speech-engine';
+import { NativePiper, hasNativePiper, usesNativePiper } from './native-piper';
 
 export type PlaybackSettings = { model: ModelId; voice: string; speed: number };
 export type PlaybackUpdate = (index: number, state: 'loading' | 'playing' | 'paused' | 'stopped' | 'ended') => void;
 type EngineFactory = (model: ModelId) => Promise<SpeechEngine>;
+export type BookIdentity = { id: string; title: string; progressSavedAt?: number };
 type Clip = { index: number; source: AudioBufferSourceNode; end: number };
 
 export class PlaybackController {
@@ -23,32 +25,45 @@ export class PlaybackController {
   private paused = false;
   private active = false;
   private pumping?: { generation: number; work: Promise<void> };
+  private native?: NativePiper;
 
   constructor(
     _audio: HTMLAudioElement,
     private readonly update: PlaybackUpdate,
     private readonly factory: EngineFactory = createSpeechEngine,
     private readonly onError: (error: unknown) => void = console.error,
-  ) {}
+  ) {
+    if (hasNativePiper()) this.native = new NativePiper((index, state) => {
+      if (!usesNativePiper(this.settings)) return;
+      this.index = index; this.update(index, state);
+    }, error => { if (usesNativePiper(this.settings)) this.onError(error); });
+  }
 
   setSettings(settings: PlaybackSettings): void {
     const voiceChanged = this.settings.model !== settings.model || this.settings.voice !== settings.voice;
     this.settings = { ...settings };
     if (voiceChanged) void this.stop().catch(this.onError);
+    else if (usesNativePiper(settings)) void this.native?.setSpeed(settings.speed).catch(this.onError);
     // Already scheduled speech finishes at its original speed; following clips use the new speed.
   }
 
-  async load(segments: ReadableSegment[], startIndex = 0): Promise<void> {
+  async load(segments: ReadableSegment[], startIndex = 0, identity?: BookIdentity): Promise<void> {
     const command = this.command + 1;
     await this.stop();
     if (command !== this.command) return;
     this.segments = segments;
     this.index = this.bound(startIndex);
+    if (this.native) {
+      const restored = await this.native.load(segments, this.index, identity);
+      if (command !== this.command) return;
+      this.index = this.bound(restored);
+    }
     this.update(this.index, 'stopped');
   }
 
   async play(segments: ReadableSegment[], startIndex = this.index): Promise<void> {
     if (!segments.length) return;
+    if (this.native && usesNativePiper(this.settings)) { await this.native.play(this.bound(startIndex), this.settings); return; }
     // Unlock the audio clock while still handling the user's Play gesture.
     const command = ++this.command;
     this.context ??= new AudioContext();
@@ -74,6 +89,7 @@ export class PlaybackController {
 
   async pause(): Promise<void> {
     const command = ++this.command;
+    if (this.native && usesNativePiper(this.settings)) { await this.native.pause(); return; }
     this.paused = true;
     await this.context?.suspend();
     if (command === this.command) this.update(this.index, 'paused');
@@ -86,11 +102,13 @@ export class PlaybackController {
     this.paused = false;
     this.clearClips();
     this.update(this.index, 'stopped');
+    await this.native?.stop();
     await this.serial(() => this.disposeEngine());
   }
 
   async jump(index: number): Promise<void> {
     if (!this.segments.length) return;
+    if (this.native && usesNativePiper(this.settings)) { await this.native.play(this.bound(index), this.settings, true); return; }
     const command = ++this.command;
     this.context ??= new AudioContext();
     await this.context.resume();
@@ -101,6 +119,7 @@ export class PlaybackController {
   async dispose(): Promise<void> {
     await this.stop();
     await this.context?.close();
+    await this.native?.dispose();
     this.context = undefined;
   }
 

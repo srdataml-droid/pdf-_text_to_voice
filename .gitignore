@@ -13,3 +13,5 @@ public/voice-packs/**
 .superpowers/
 artifacts/
 public/pdf-assets/
+android/app/libs/*.aar
+android/app/src/main/assets/native-piper/

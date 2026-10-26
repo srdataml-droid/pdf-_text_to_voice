@@ -8,6 +8,7 @@ import { getDeviceStorageInfo, openAppStorageSettings, keepReadingScreenAwake } 
 import { modelById, modelCatalog, type ModelId } from './tts/catalog';
 import { createSpeechEngine } from './tts/engine-factory';
 import { PlaybackController } from './reader/playback-controller';
+import { androidReader, usesNativePiper } from './reader/native-piper';
 import { PdfPageView } from './reader/pdf-page-view';
 import { bindPlaybackControls } from './reader/playback-controls';
 import { listPiperPacks, importPiperPack, deletePiperPack } from './storage/voice-packs';
@@ -60,7 +61,7 @@ export async function startApp(): Promise<void> {
   app!.innerHTML = renderShell();
   player = new PlaybackController(el<HTMLAudioElement>('#audio'), (position, state) => {
     index = position; playbackState = state; paintPosition();
-    keepReadingScreenAwake(state === 'playing' || state === 'loading');
+    keepReadingScreenAwake((state === 'playing' || state === 'loading') && !usesNativePiper(currentSettings()));
     if (book && content && !openingBook && ['playing', 'paused', 'ended'].includes(state)) {
       const id = book.id;
       const location = content.segments[position]?.locationLabel;
@@ -144,7 +145,7 @@ export async function startApp(): Promise<void> {
   window.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setView('library'); el<HTMLInputElement>('#library-search').focus(); } });
   let resizeTimer = 0;
   window.addEventListener('resize', () => { window.clearTimeout(resizeTimer); resizeTimer = window.setTimeout(() => { if (view === 'reader') pdfView?.refresh(); }, 200); });
-  window.addEventListener('beforeunload', () => { coverUrls.forEach(url => URL.revokeObjectURL(url)); cancelPreview(); void player.dispose(); });
+  window.addEventListener('beforeunload', () => { coverUrls.forEach(url => URL.revokeObjectURL(url)); cancelPreview(); if (!androidReader()) void player.dispose(); });
   setupDrop(); applyAppearance();
   try {
     await refreshPiperVoices(); renderVoiceSettings(); await refreshLibrary();
@@ -393,7 +394,7 @@ async function performOpen(id: string, version: number): Promise<void> {
     content = parsed;
     const restoredIndex = parsed.legacyIndexMap?.[saved?.segmentIndex ?? 0] ?? saved?.segmentIndex ?? 0;
     index = Math.max(0, Math.min(restoredIndex, parsed.segments.length - 1));
-    await player.load(parsed.segments, index);
+    await player.load(parsed.segments, index, { id: record.id, title: parsed.title || record.title, progressSavedAt: saved?.savedAt });
     if (version !== bookVersion) return;
     const metadata = { title: parsed.title || record.title, author: parsed.author ?? record.author, cover: parsed.cover ?? record.cover, segmentCount: parsed.segments.length, pageCount: parsed.pageCount, lastOpenedAt: Date.now(), lastLocation: parsed.segments[index]?.locationLabel };
     Object.assign(book, metadata);
@@ -478,7 +479,7 @@ function seekWithoutPlaying(position: number): Promise<void> {
     if (!ownsBook()) return;
     await player.pause(); await positionWork;
     if (!ownsBook()) return;
-    await player.load(parsed.segments, targetIndex);
+    await player.load(parsed.segments, targetIndex, { id: bookId, title: parsed.title, progressSavedAt: Date.now() });
     if (!ownsBook()) return;
     index = targetIndex;
     const location = parsed.segments[targetIndex].locationLabel;

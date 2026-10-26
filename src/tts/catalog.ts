@@ -18,7 +18,7 @@ export const modelCatalog: ModelOption[] = [
   {
     id: 'piper',
     label: 'Piper',
-    detail: 'A compact starting point. Lessac US English is included; import more Piper voices from your files.',
+    detail: 'A compact starting point. Lessac US English is included, with Android background reading. Imported voices need the reader open.',
     voices: [{ id: 'en_US-lessac-medium', label: 'Lessac · US English', model: 'piper' }],
   },
   {

@@ -62,8 +62,11 @@ export class PiperEngine implements SpeechEngine {
       ), [3]),
     };
     if (this.session.inputNames.includes('sid')) feeds.sid = new ort.Tensor('int64', BigInt64Array.of(0n), [1]);
-    const output = await this.session.run(feeds);
-    try { return wavBlob(output.output.data as Float32Array, config.audio.sample_rate); }
+    let output: Record<string, ort.Tensor> = {};
+    try {
+      output = await this.session.run(feeds);
+      return wavBlob(output.output.data as Float32Array, config.audio.sample_rate);
+    }
     finally {
       for (const tensor of Object.values(feeds)) tensor.dispose();
       for (const tensor of Object.values(output)) tensor.dispose();

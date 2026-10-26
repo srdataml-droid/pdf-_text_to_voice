@@ -1,3 +1,13 @@
+## Piper background repair — 26 October 2026 (v1.4)
+
+User reported Piper cutting off, slowing with the screen off, and stopping after chapter 27. Read-only device diagnostics confirmed the installed version was 1.2.1. Available crash logs did not identify the chapter failure. Source inspection found no native background player: all generation/playback depended on the embedded web runtime. This is an architectural gap, not proof of the exact cause of every reported stop.
+
+Implemented a native Android Piper service, bounded PCM look-ahead, audio focus and headphone-disconnect handling, media controls, CPU wake lock, native passage persistence and private temporary plan loading. Included pending-start cancellation, saved progress restoration, and cleanup of web Piper inputs even when inference fails. Background support is limited to the bundled Piper Lessac voice; other voices keep their foreground path. Existing document parsing, book database and package identity are retained. Policy version is updated, with a fresh agreement choice required for narration.
+
+TypeScript/Vite production build, Capacitor sync and Android debug assembly succeeded. Source review covered cancellation, audio-head passage timing, end-of-book drain and bounded queue allocation. The APK packages ARM64/ARMv7 native libraries and Piper assets; the merged manifest includes foreground-media/wake permissions and omits Internet permission. No automated functional tests were added or run. These build observations do not establish sustained screen-off playback or resolve the chapter-specific report.
+
+The phone disconnected before installation. Pending device checks: accept the updated notice if desired, select bundled Piper Lessac, listen with display locked, use notification Pause/Resume, and revisit chapter 27. The user should open their own book; book files and contents are not collected for diagnostics. The new native path has not yet been exercised on the physical phone.
+
 # Verification — 7 October 2026
 
 ## Privacy and agreement update — 24 October 2026
