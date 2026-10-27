@@ -1,3 +1,11 @@
+## Large-book checks — 27 October 2026
+
+The user authorized high-volume book testing in the open local browser. That browser's library was empty. Clicking Add books opened the unaccepted privacy/agreement dialog rather than a file chooser. The agent asked the user to review and accept personally; no agreement was accepted or bypassed. Until that choice is made, real browser import, speech and visual highlighting remain pending.
+
+Added a regression using the actual TXT parser with a generated 1,500-chapter book, five numbered sentences per chapter plus each heading: 9,000 passages total. It asserts exact extraction, unique passage IDs, all synthesized inputs, all simulated played clips, consecutive position updates, no leftover clips, and a maximum of three scheduled clips. It passed. The existing 23 reliability checks also passed (9 native helper checks, 4 native bridge checks, 1 EPUB chapter-retention check, 9 simulated playback checks); the expanded playback suite now has 10 checks, bringing coverage to 24. These are simulated playback and native helper checks, not an endurance audition or screen-off device test.
+
+Separately ran the current PDF parser on the public GovInfo reference edition of *Psychology of Intelligence Analysis* (214 pages, 4,400 extracted passages). On reference page 130, the reported “Because a high temperature…” sentence is retained in full (209 characters), preceded by the sentence ending “suffering from.” and followed by “Evidence is diagnostic…”. An initial lookup selected a similar earlier example on reference page 73; restricting the comparison to page 130 resolved that diagnostic mismatch. This edition differs from the user's 203-page PDF, so the user's page-123 skip remains unconfirmed and unresolved. Shared whole-line rectangles between adjacent sentences are also present; that is not evidence that real narration skipped a sentence.
+
 ## Reader space and named voices — 26 October 2026 (v1.5)
 
 User confirmed the 1.4.2 reader works “even at 1123”; the number was not identified as a page or chapter, and this was not a timed endurance check. Requested more document space, compact reader controls, quarter-step speed buttons, and voice names with short introductions.

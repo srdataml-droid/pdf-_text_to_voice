@@ -3,6 +3,7 @@ import { createServer } from 'vite';
 const server = await createServer({ configFile: false, optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, watch: null }, appType: 'custom' });
 const { PlaybackController } = await server.ssrLoadModule('/src/reader/playback-controller.ts');
 const { sentenceSegments } = await server.ssrLoadModule('/src/formats/segments.ts');
+const { parseTxt } = await server.ssrLoadModule('/src/formats/txt-content.ts');
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const gate = () => { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; };
 const segment = text => ({ id: text, text, locationLabel: text });
@@ -34,6 +35,42 @@ const engine = synthesize => ({ initialize: async () => {}, synthesize: synthesi
 let count = 0;
 async function check(name, work) { await work(); count++; console.log('PASS ' + name); }
 try {
+  await check('1,500 parsed chapters retain all 9,000 passages through playback and position updates', async () => {
+    const expected = [];
+    const chapters = Array.from({ length: 1500 }, (_, chapter) => {
+      const title = 'Chapter ' + (chapter + 1);
+      const sentences = [
+        'We begin with a clear first sentence.',
+        'Because a high temperature is consistent with many possible explanations, evidence needs careful interpretation.',
+        'This middle sentence must be read and must never disappear.',
+        'The next sentence follows in order, with the same voice.',
+        'We reach the final sentence before moving into the next chapter.',
+      ].map((text, index) => title + ', sentence ' + (index + 1) + ': ' + text);
+      expected.push(title, ...sentences);
+      return title + '\n\n' + sentences.join(' ');
+    });
+    const parsed = await parseTxt({ title: 'Continuity stress book', file: new Blob([chapters.join('\n\n')]) });
+    assert.equal(parsed.chapters.length, 1500);
+    assert.deepEqual(parsed.segments.map(item => item.text), expected);
+    assert.equal(new Set(parsed.segments.map(item => item.id)).size, expected.length);
+    const spoken = [], positions = [];
+    const player = new PlaybackController({}, (index, state) => {
+      if (state === 'playing' && positions.at(-1) !== index) positions.push(index);
+    }, async () => engine(async text => { spoken.push(text); return wav(text); }));
+    try {
+      await player.play(parsed.segments);
+      const clock = Clock.latest;
+      for (let i = 0; i < expected.length; i++) {
+        assert.ok(clock.queue.length, 'Queue unexpectedly empty at passage ' + i);
+        clock.queue[0].end(); await turn();
+      }
+      assert.deepEqual(spoken, expected);
+      assert.deepEqual(clock.played, expected);
+      assert.deepEqual(positions, expected.map((_, index) => index));
+      assert.equal(clock.peak, 3);
+      assert.equal(clock.queue.length, 0);
+    } finally { await player.dispose(); }
+  });
   await check('1,000 chapter transitions preserve order with at most three scheduled clips', async () => {
     const spoken = [], updates = [];
     const input = Array.from({ length: 3000 }, (_, i) => ({ ...segment('passage ' + i), chapterTitle: 'Chapter ' + (Math.floor(i / 3) + 1) }));
