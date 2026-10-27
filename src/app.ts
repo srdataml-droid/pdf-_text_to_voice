@@ -12,6 +12,7 @@ import { androidReader, usesNativePiper } from './reader/native-piper';
 import { PdfPageView } from './reader/pdf-page-view';
 import { AutoScroll } from './reader/auto-scroll';
 import { ZoomGesture } from './reader/zoom-gesture';
+import { ReaderWallpaper } from './reader/wallpaper';
 import { bindPlaybackControls, normalizedSpeed, paintSpeed } from './reader/playback-controls';
 import { listPiperPacks, importPiperPack, deletePiperPack } from './storage/voice-packs';
 import { downloadBackup, restoreBackup } from './settings/backup-view';
@@ -62,6 +63,12 @@ let storageVersion = 0;
 
 export async function startApp(): Promise<void> {
   app!.innerHTML = renderShell();
+  const wallpaper = new ReaderWallpaper(el('#preferences'), showError, remove => {
+    showRecovery('Remove your saved background?', 'This removes only the resized copy in this app. Your original image stays on your device.',
+      [{ label: 'Keep image', run: () => {} }, { label: 'Remove local copy', run: remove }]);
+  }, () => pdfView?.refresh());
+  void wallpaper.load();
+  window.addEventListener('beforeunload', () => wallpaper.dispose());
   autoScroll = new AutoScroll(() => view === 'reader' && content ? pdfView?.scrollingElement() ?? document.scrollingElement as HTMLElement : null,
     async () => {
       if (!content || view !== 'reader') return false;

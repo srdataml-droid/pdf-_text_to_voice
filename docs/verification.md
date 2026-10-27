@@ -1,3 +1,11 @@
+## Local wallpapers — 27 October 2026 (v1.7)
+
+The user requested both built-in backgrounds and the ability to add their own. Added four original bundled SVG illustrations (Dunes, Forest mist, Moonlit lake, Linen), Plain, and one saved custom-image slot in Appearance. Personal images are selected explicitly through the file-access explanation, restricted to JPG/PNG/WebP up to 12 MB and 32 megapixels, resized to a maximum 1600-pixel edge, and re-encoded without original image metadata with a 2 MB stored-copy cap. The original is untouched; choosing another image replaces the saved copy. Removal has an explicit review dialog.
+
+Custom images use a separate IndexedDB database; book, progress and voice schemas are unchanged. Image load/import/remove ordering is guarded, controls disable while saving, failed replacement preserves the previous stored image, and object URLs are revoked on replacement/removal/unload. Background choices are stored locally and images are excluded from book backups. Added contextual file/privacy explanations. Built-in backgrounds remain usable if image storage is unavailable.
+
+PDF pages remain opaque with an eight-pixel scenery frame; text/EPUB receive solid reading surfaces. Choosing a background refreshes the PDF fit to account for the frame. TypeScript/Vite and Android v1.7 (code 12) packaging succeeded. Visually reviewed the actual gallery and selected Dunes in the local browser; screenshot saved as reader-v1.7-wallpapers.png in the chat outputs. No automated tests were added or run. Personal-image import/removal, reload persistence, and Android photo selection still require a device trial; compilation and gallery review do not establish those outcomes.
+
 ## Reading space, gestures and colours — 27 October 2026 (v1.6)
 
 Implemented full-viewport PDF layout above the measured player, a compact expand control, original-page pinch zoom (including Ctrl+wheel), and text-size gestures for EPUB/TXT. PDF gestures preview using a CSS transform and redraw on release, preserving the point under the gesture and bounding canvas pixels with the existing limits. Shared full-line PDF highlighting is unchanged; the earlier exact-phone sentence skip is not claimed repaired.

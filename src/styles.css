@@ -551,3 +551,32 @@ body[data-theme='dark'] .pdf-stage { background: #20231f; }
   body[data-view='reader']:not([data-player-expanded='true']) .player { min-height: 80px; }
   body[data-view='reader'] .reader-header { min-height: 48px; }
 }
+
+/* Local scenery frames the document; a solid reading surface protects contrast. */
+.wallpaper-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-block: 14px; }
+.wallpaper-choice { display: grid; gap: 8px; padding: 6px 6px 10px; min-width: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); text-align: left; font-size: 12px; }
+.wallpaper-choice[aria-pressed='true'] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.wallpaper-choice > span:last-child { padding-inline: 3px; }
+.wallpaper-preview { display: block; height: 100px; border-radius: 7px; background-size: cover; background-position: center; background-color: var(--background); }
+.wallpaper-preview-dunes { background-image: url('/design/wallpapers/dunes.svg'); }
+.wallpaper-preview-forest { background-image: url('/design/wallpapers/forest.svg'); }
+.wallpaper-preview-lake { background-image: url('/design/wallpapers/lake.svg'); }
+.wallpaper-preview-linen { background-image: url('/design/wallpapers/linen.svg'); }
+.wallpaper-preview-custom { background-color: var(--sage); }
+.wallpaper-preview-custom:empty::after { content: '+'; display: grid; place-items: center; height: 100%; color: var(--sage-text); font-size: 30px; }
+.wallpaper-choice:enabled .wallpaper-preview-custom::after { content: ''; }
+.wallpaper-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.wallpaper-preferences .quiet-note { line-height: 1.6; }
+#wallpaper-status { overflow-wrap: anywhere; }
+body[data-view='reader']:not([data-wallpaper='none']) .reader-content {
+  background-color: var(--background); background-image: var(--reader-wallpaper, none); background-position: center; background-size: cover; background-attachment: fixed;
+}
+body[data-view='reader']:not([data-wallpaper='none']):not([data-reader-format='pdf']) .book-text { background: var(--surface); border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px #0001; }
+body[data-view='reader']:not([data-wallpaper='none']) .reader-status { background: var(--surface); border-radius: 6px; padding: 6px 12px; }
+body[data-view='reader'][data-reader-format='pdf']:not([data-wallpaper='none']) .pdf-scroll { background: transparent; padding: 8px; }
+body[data-view='reader'][data-reader-format='pdf']:not([data-wallpaper='none']) .pdf-stage { background: #fff; }
+@media (max-width: 420px) {
+  .wallpaper-grid { gap: 8px; }
+  .wallpaper-preview { height: 84px; }
+  body[data-view='reader']:not([data-wallpaper='none']):not([data-reader-format='pdf']) .book-text { padding: 18px 14px; }
+}
