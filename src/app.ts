@@ -10,6 +10,8 @@ import { createSpeechEngine } from './tts/engine-factory';
 import { PlaybackController } from './reader/playback-controller';
 import { androidReader, usesNativePiper } from './reader/native-piper';
 import { PdfPageView } from './reader/pdf-page-view';
+import { AutoScroll } from './reader/auto-scroll';
+import { ZoomGesture } from './reader/zoom-gesture';
 import { bindPlaybackControls, normalizedSpeed, paintSpeed } from './reader/playback-controls';
 import { listPiperPacks, importPiperPack, deletePiperPack } from './storage/voice-packs';
 import { downloadBackup, restoreBackup } from './settings/backup-view';
@@ -18,7 +20,7 @@ import { icon } from './ui/icons';
 import { agreementRequired, bindPrivacyControls, requestFileAccess, showPrivacyWelcome } from './privacy/privacy-controls';
 
 type View = 'library' | 'reader' | 'models' | 'storage';
-type Settings = { model: ModelId; voices: Record<string, string>; speed: number; theme: 'paper' | 'dark'; fontSize: number; spacing: number; width: 'narrow' | 'wide'; follow: boolean; narrationDefaults: number };
+type Settings = { model: ModelId; voices: Record<string, string>; speed: number; theme: 'paper' | 'sepia' | 'sage' | 'dark'; fontSize: number; spacing: number; width: 'narrow' | 'wide'; follow: boolean; autoScrollSpeed: number; narrationDefaults: number };
 type PackManifest = { models: { id: ModelId; bytes: number; files: number }[]; runtimeBytes: number; totalBytes: number };
 const SETTINGS_KEY = 'novaxis-reader-settings-v1';
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -34,6 +36,7 @@ let index = 0;
 let playbackState = 'stopped';
 let player: PlaybackController;
 let pdfView: PdfPageView | undefined;
+let autoScroll: AutoScroll;
 let bookVersion = 0;
 let openingBook = false;
 let openingWork: Promise<void> = Promise.resolve();
@@ -59,9 +62,41 @@ let storageVersion = 0;
 
 export async function startApp(): Promise<void> {
   app!.innerHTML = renderShell();
+  autoScroll = new AutoScroll(() => view === 'reader' && content ? pdfView?.scrollingElement() ?? document.scrollingElement as HTMLElement : null,
+    async () => {
+      if (!content || view !== 'reader') return false;
+      if (pdfView) return pdfView.nextPage();
+      const next = windowStart + 80;
+      if (next >= content.segments.length) return false;
+      renderPassageWindow(next, true);
+      el('#book-text').scrollIntoView({ block: 'start', behavior: 'instant' });
+      return true;
+    }, active => {
+      el('#auto-scroll').setAttribute('aria-pressed', String(active));
+      text('#auto-scroll', active ? 'Stop auto-scroll' : 'Start auto-scroll');
+      el('#auto-scroll-bar').hidden = !active;
+      keepReadingScreenAwake(active || (['playing', 'loading'].includes(playbackState) && !usesNativePiper(currentSettings())));
+    });
+  let pinchFont = settings.fontSize;
+  let pinchingText = false;
+  new ZoomGesture(el('#book-text'), (factor, _point, finished) => {
+    if (content?.format === 'pdf') return;
+    autoScroll.stop();
+    if (!pinchingText) { pinchFont = settings.fontSize; pinchingText = true; }
+    settings.fontSize = Math.max(16, Math.min(40, Math.round(pinchFont * factor)));
+    applyAppearance(); if (finished) { pinchingText = false; persistSettings(); }
+  });
+  const playerSize = new ResizeObserver(entries => {
+    const height = entries[0]?.target.getBoundingClientRect().height ?? 100;
+    document.body.style.setProperty('--reader-player-height', height + 'px');
+  });
+  playerSize.observe(el('#player'));
+  for (const event of ['pointerdown', 'touchstart', 'wheel', 'keydown']) document.addEventListener(event, e => {
+    if (!(e.target as Element)?.closest?.('#auto-scroll-bar, #auto-scroll, #auto-scroll-speed')) autoScroll.stop();
+  }, { capture: true, passive: true });
   player = new PlaybackController(el<HTMLAudioElement>('#audio'), (position, state) => {
     index = position; playbackState = state; paintPosition();
-    keepReadingScreenAwake((state === 'playing' || state === 'loading') && !usesNativePiper(currentSettings()));
+    keepReadingScreenAwake(autoScroll.active || ((state === 'playing' || state === 'loading') && !usesNativePiper(currentSettings())));
     if (book && content && !openingBook && ['playing', 'paused', 'ended'].includes(state)) {
       const id = book.id;
       const location = content.segments[position]?.locationLabel;
@@ -75,7 +110,7 @@ export async function startApp(): Promise<void> {
   }, undefined, showError);
   player.setSettings(currentSettings());
   persistSettings();
-  bindPrivacyControls(async () => { cancelPreview(); await player.pause(); });
+  bindPrivacyControls(async () => { autoScroll.stop(); cancelPreview(); await player.pause(); });
   bindPlaybackControls({
     toggle: () => void togglePlayback(),
     previous: () => void jumpTo(index - 1),
@@ -94,16 +129,31 @@ export async function startApp(): Promise<void> {
     if (target.dataset.theme) { settings.theme = target.dataset.theme as Settings['theme']; applyAppearance(); persistSettings(); }
   });
   document.querySelectorAll<HTMLDetailsElement>('.reader-menu').forEach(menu => menu.addEventListener('click', event => { if ((event.target as Element).closest('button')) menu.open = false; }));
-  on('#follow-voice', 'click', () => { settings.follow = !settings.follow; applyAppearance(); persistSettings(); if (settings.follow) revealPosition(); });
+  on('#follow-voice', 'click', () => { autoScroll.stop(); settings.follow = !settings.follow; applyAppearance(); persistSettings(); if (settings.follow) revealPosition(); });
+  on('#auto-scroll', 'click', () => {
+    if (!content) return;
+    if (autoScroll.active) autoScroll.stop();
+    else { settings.follow = false; applyAppearance(); persistSettings(); autoScroll.start(); }
+  });
+  on('#stop-auto-scroll', 'click', () => autoScroll.stop());
+  on('#auto-scroll-speed', 'input', event => {
+    settings.autoScrollSpeed = Number((event.currentTarget as HTMLInputElement).value);
+    autoScroll.speed = settings.autoScrollSpeed;
+    text('#auto-scroll-speed-label', settings.autoScrollSpeed + ' px/s'); persistSettings();
+  });
   on('#chapters-toggle', 'click', () => { renderChapters(); showDialog('#chapters'); });
   on('#preferences-toggle', 'click', () => showDialog('#preferences'));
-  on('#reader-focus', 'click', () => {
+  const toggleFocus = () => {
     const focused = document.body.dataset.readerFocus !== 'true';
     document.body.dataset.readerFocus = String(focused);
     el('#reader-focus').setAttribute('aria-pressed', String(focused));
     text('#reader-focus', focused ? 'Exit focus' : 'Focus');
+    el('#reader-expand').setAttribute('aria-pressed', String(focused));
+    el('#reader-expand').setAttribute('aria-label', focused ? 'Restore reading controls' : 'Expand reading area');
     pdfView?.refresh();
-  });
+  };
+  on('#reader-focus', 'click', toggleFocus);
+  on('#reader-expand', 'click', toggleFocus);
   on('#spoken-toggle', 'click', () => {
     const expanded = el('#spoken-toggle').getAttribute('aria-expanded') !== 'true';
     el('#spoken-toggle').setAttribute('aria-expanded', String(expanded));
@@ -139,7 +189,7 @@ export async function startApp(): Promise<void> {
   on('#import-summary', 'cancel', event => { if (importing) event.preventDefault(); });
   on('#refresh-device-storage', 'click', () => void refreshStorage().catch(showError));
   on('#manage-app-storage', 'click', () => void openAppStorageSettings().catch(showError));
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && view === 'storage') void refreshStorage().catch(showError); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) autoScroll.stop(); if (!document.hidden && view === 'storage') void refreshStorage().catch(showError); });
   on('#import-backup', 'change', event => { const input = event.currentTarget as HTMLInputElement; if (input.files?.[0]) void restoreFromFile(input.files[0]); input.value = ''; });
   on('#scrub', 'change', event => void jumpTo(Number((event.currentTarget as HTMLInputElement).value)));
   for (const selector of ['#library-search', '#library-sort', '#library-filter']) on(selector, selector === '#library-search' ? 'input' : 'change', paintLibrary);
@@ -162,6 +212,7 @@ export async function startApp(): Promise<void> {
 function setView(next: View): void {
   if (!['library', 'reader', 'models', 'storage'].includes(next)) return;
   if (next === 'reader' && !book) return notify('Choose a book from your library first.');
+  if (next !== 'reader') autoScroll.stop();
   if (next !== 'models') cancelPreview();
   view = next; document.body.dataset.view = view;
   for (const name of ['library', 'reader', 'models', 'storage']) el('#view-' + name).hidden = name !== view;
@@ -187,6 +238,9 @@ function applyAppearance(): void {
   el<HTMLSelectElement>('#reading-width').value = settings.width;
   document.querySelectorAll<HTMLElement>('[data-theme]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.theme === settings.theme)));
   el('#follow-voice').setAttribute('aria-pressed', String(settings.follow));
+  autoScroll.speed = settings.autoScrollSpeed;
+  el<HTMLInputElement>('#auto-scroll-speed').value = String(settings.autoScrollSpeed);
+  text('#auto-scroll-speed-label', settings.autoScrollSpeed + ' px/s');
   settings.speed = normalizedSpeed(settings.speed); paintSpeed(settings.speed);
 }
 
@@ -377,6 +431,7 @@ function openBook(id: string): Promise<void> {
 async function performOpen(id: string, version: number): Promise<void> {
   if (version !== bookVersion) return;
   openingBook = true;
+  autoScroll.stop();
   try {
     cancelPreview(); await previewTask; const record = await getBook(id);
     if (version !== bookVersion) return;
@@ -722,6 +777,7 @@ async function removeBooks(ids: readonly string[]): Promise<void> {
   finally { deletingBooks = false; paintLibraryBusy(); }
 }
 async function unloadBook(): Promise<void> {
+  autoScroll.stop();
   bookVersion++; await openingWork; openingBook = true;
   await player.load([], 0); await positionWork; await pdfView?.destroy(); pdfView = undefined;
   el('#book-text').replaceChildren(); book = undefined; content = undefined; openingBook = false;
@@ -757,13 +813,14 @@ function showError(error: unknown, retry?: () => void): void {
     [...(retry ? [{ label: 'Try again', run: retry }] : []), { label: quota ? 'Manage storage' : missing ? 'Choose another voice' : 'Close', run: () => { if (quota) setView('storage'); else if (missing) setView('models'); } }]);
 }
 function readSettings(): Settings {
-  const defaults: Settings = { model: 'piper', voices: { piper: 'en_US-lessac-medium' }, speed: 1, theme: 'paper', fontSize: 22, spacing: 1.75, width: 'narrow', follow: true, narrationDefaults: 2 };
+  const defaults: Settings = { model: 'piper', voices: { piper: 'en_US-lessac-medium' }, speed: 1, theme: 'paper', fontSize: 22, spacing: 1.75, width: 'narrow', follow: true, autoScrollSpeed: 18, narrationDefaults: 2 };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null'); if (!saved || !modelCatalog.some(item => item.id === saved.model)) return defaults;
     const voices = saved.voices && typeof saved.voices === 'object' && !Array.isArray(saved.voices) ? saved.voices : defaults.voices;
     // Apply the requested Piper default once on upgrade, then remember later voice choices.
     return { ...defaults, model: saved.narrationDefaults === 2 ? saved.model : 'piper', voices: { ...voices, ...(saved.narrationDefaults === 2 ? {} : defaults.voices) },
-      speed: normalizedSpeed(Number(saved.speed) || 1), theme: saved.theme === 'dark' ? 'dark' : 'paper', fontSize: Math.max(16, Math.min(32, Number(saved.fontSize) || 22)),
+      speed: normalizedSpeed(Number(saved.speed) || 1), theme: ['paper', 'sepia', 'sage', 'dark'].includes(saved.theme) ? saved.theme : 'paper', fontSize: Math.max(16, Math.min(40, Number(saved.fontSize) || 22)),
+      autoScrollSpeed: Math.max(8, Math.min(60, Number(saved.autoScrollSpeed) || 18)),
       spacing: [1.5, 1.75, 2].includes(saved.spacing) ? saved.spacing : 1.75, width: saved.width === 'wide' ? 'wide' : 'narrow', follow: saved.follow !== false };
   } catch { return defaults; }
 }

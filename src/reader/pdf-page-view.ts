@@ -1,5 +1,6 @@
 import * as pdfjs from 'pdfjs-dist';
 import type { ReadableSegment } from '../domain/book';
+import { ZoomGesture, type ZoomPoint } from './zoom-gesture';
 
 export class PdfPageView {
   private document?: pdfjs.PDFDocumentProxy;
@@ -17,6 +18,13 @@ export class PdfPageView {
   private total: HTMLSpanElement;
   private status: HTMLParagraphElement;
   private scroll: HTMLDivElement;
+  private gesture: ZoomGesture;
+  private sizeObserver: ResizeObserver;
+  private renderedScale = 1;
+  private gestureScale = 1;
+  private zoomAnchor?: { x: number; y: number; ratioX: number; ratioY: number };
+  private resizing = 0;
+  private disposed = false;
 
   constructor(private target: HTMLElement, private segments: ReadableSegment[],
     private read: (index: number) => void, private error: (error: unknown) => void,
@@ -27,9 +35,18 @@ export class PdfPageView {
     this.total = target.querySelector('.pdf-total')!;
     this.status = target.querySelector('.pdf-page-note')!;
     this.scroll = target.querySelector('.pdf-scroll')!;
+    this.gesture = new ZoomGesture(this.scroll, (factor, point, finished) => this.pinch(factor, point, finished));
+    this.sizeObserver = new ResizeObserver(() => {
+      window.clearTimeout(this.resizing);
+      this.resizing = window.setTimeout(() => { if (!this.disposed) this.refresh(); }, 120);
+    });
+    this.sizeObserver.observe(target);
+    const player = document.querySelector('#player');
+    if (player) this.sizeObserver.observe(player);
     target.querySelector('[data-page="previous"]')!.addEventListener('click', () => this.navigate(this.page - 1));
     target.querySelector('[data-page="next"]')!.addEventListener('click', () => this.navigate(this.page + 1));
     this.label.addEventListener('change', () => this.navigate(Number(this.label.value)));
+    this.label.addEventListener('keydown', event => { if (event.key === 'Enter') this.navigate(Number(this.label.value)); });
     target.querySelector('.pdf-zoom')!.addEventListener('change', event => {
       const value = (event.target as HTMLSelectElement).value;
       this.zoom = value === 'width' || value === 'page' ? value : Number(value);
@@ -62,6 +79,34 @@ export class PdfPageView {
 
   refresh(): void { if (this.document && this.target.clientWidth) this.navigate(this.page, true); }
 
+  scrollingElement(): HTMLElement { return this.scroll; }
+  async nextPage(): Promise<boolean> {
+    if (!this.document || this.disposed || this.page >= this.document.numPages) return false;
+    await this.showPage(this.page + 1); return true;
+  }
+
+  private pinch(factor: number, point: ZoomPoint, finished: boolean): void {
+    if (!this.document || this.disposed || !this.stage.clientWidth || !this.stage.clientHeight) return;
+    if (!this.zoomAnchor) {
+      this.gestureScale = this.renderedScale;
+      const area = this.scroll.getBoundingClientRect(), paper = this.stage.getBoundingClientRect();
+      this.zoomAnchor = { x: point.x - area.left, y: point.y - area.top,
+        ratioX: (point.x - paper.left) / paper.width, ratioY: (point.y - paper.top) / paper.height };
+    }
+    const scale = Math.max(.25 * 96 / 72, Math.min(4 * 96 / 72, this.gestureScale * factor));
+    // Preview cheaply while the fingers move; redraw a sharp canvas only on release.
+    this.stage.style.transformOrigin = (this.zoomAnchor.ratioX * this.stage.clientWidth) + 'px ' +
+      (this.zoomAnchor.ratioY * this.stage.clientHeight) + 'px';
+    this.stage.style.transform = 'scale(' + scale / this.renderedScale + ')';
+    if (!finished) return;
+    this.zoom = scale * 72 / 96;
+    const selector = this.target.querySelector<HTMLSelectElement>('.pdf-zoom')!;
+    selector.querySelector('[data-custom-zoom]')?.remove();
+    const option = new Option(Math.round(this.zoom * 100) + '%', String(this.zoom));
+    option.dataset.customZoom = 'true'; selector.append(option); selector.value = String(this.zoom);
+    this.navigate(this.page, true);
+  }
+
   private navigate(page: number, force = false): void {
     void this.showPage(page, force).catch(this.error);
   }
@@ -86,15 +131,17 @@ export class PdfPageView {
       if (version !== this.version) return;
       const rotation = (pdfPage.rotate + this.rotation) % 360;
       const original = pdfPage.getViewport({ scale: 1, rotation });
-      const playerHeight = document.querySelector('#player')?.getBoundingClientRect().height ?? 0;
-      const navigationHeight = document.querySelector('.mobile-navigation')?.getBoundingClientRect().height ?? 0;
-      this.scroll.style.height = Math.max(200, window.innerHeight - this.scroll.getBoundingClientRect().top - playerHeight - navigationHeight - 24) + 'px';
+      const player = document.querySelector<HTMLElement>('#player');
+      const viewportBottom = window.visualViewport ? window.visualViewport.height + window.visualViewport.offsetTop : window.innerHeight;
+      const bottom = player && !player.hidden ? Math.min(viewportBottom, player.getBoundingClientRect().top) : viewportBottom;
+      this.scroll.style.height = Math.max(120, bottom - this.scroll.getBoundingClientRect().top) + 'px';
       const padding = getComputedStyle(this.scroll);
       const available = Math.max(220, this.scroll.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight));
       const height = Math.max(200, this.scroll.clientHeight - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom));
       const scale = this.zoom === 'width' ? available / original.width : this.zoom === 'page'
         ? Math.min(available / original.width, height / original.height) : this.zoom * 96 / 72;
       const viewport = pdfPage.getViewport({ scale, rotation });
+      this.renderedScale = scale;
       const canvas = document.createElement('canvas');
       canvas.setAttribute('role', 'img');
       canvas.setAttribute('aria-label', 'Original PDF page ' + page);
@@ -108,13 +155,15 @@ export class PdfPageView {
       canvas.style.height = viewport.height + 'px';
       this.stage.style.width = viewport.width + 'px';
       this.stage.style.height = viewport.height + 'px';
+      this.stage.style.transform = '';
       this.stage.replaceChildren(canvas);
       this.renderTask = pdfPage.render({ canvas, viewport, transform: [density, 0, 0, density, 0, 0] });
       try { await this.renderTask.promise; }
       catch (error) { if ((error as Error).name === 'RenderingCancelledException') return; throw error; }
       if (version !== this.version) return;
-      this.scroll.scrollLeft = samePage ? anchorX * this.scroll.scrollWidth : 0;
-      this.scroll.scrollTop = samePage ? anchorY * this.scroll.scrollHeight : 0;
+      const zoomAnchor = this.zoomAnchor; this.zoomAnchor = undefined;
+      this.scroll.scrollLeft = zoomAnchor ? zoomAnchor.ratioX * viewport.width + this.stage.offsetLeft - zoomAnchor.x : samePage ? anchorX * this.scroll.scrollWidth : 0;
+      this.scroll.scrollTop = zoomAnchor ? zoomAnchor.ratioY * viewport.height + this.stage.offsetTop - zoomAnchor.y : samePage ? anchorY * this.scroll.scrollHeight : 0;
       let count = 0;
       const lines = new Map<string, HTMLButtonElement>();
       this.segments.forEach((segment, index) => {
@@ -144,7 +193,7 @@ export class PdfPageView {
         }
       });
       this.status.textContent = count ? 'Original page · tap a line to listen' : 'Original page · no selectable text on this page';
-      this.highlight(this.following);
+      this.highlight(this.following && !zoomAnchor);
       this.pageChanged?.(page);
       pdfPage.cleanup();
     });
@@ -156,7 +205,7 @@ export class PdfPageView {
     const current = Array.from(this.stage.querySelectorAll<HTMLElement>('.pdf-line'))
       .filter(line => line.dataset.indices?.split(' ').includes(String(this.position)));
     current.forEach(line => line.classList.add('current'));
-    if (scroll && current[0]) {
+    if (scroll && !this.zoomAnchor && current[0]) {
       const rect = current[0].getBoundingClientRect();
       const area = this.scroll.getBoundingClientRect();
       const outsideY = rect.top < area.top + 20 || rect.bottom > area.bottom - 20;
@@ -170,6 +219,7 @@ export class PdfPageView {
   }
 
   async destroy(): Promise<void> {
+    this.disposed = true; this.gesture.destroy(); this.sizeObserver.disconnect(); window.clearTimeout(this.resizing);
     this.version++;
     this.renderTask?.cancel();
     await this.work.catch(() => {});

@@ -1,3 +1,11 @@
+## Reading space, gestures and colours — 27 October 2026 (v1.6)
+
+Implemented full-viewport PDF layout above the measured player, a compact expand control, original-page pinch zoom (including Ctrl+wheel), and text-size gestures for EPUB/TXT. PDF gestures preview using a CSS transform and redraw on release, preserving the point under the gesture and bounding canvas pixels with the existing limits. Shared full-line PDF highlighting is unchanged; the earlier exact-phone sentence skip is not claimed repaired.
+
+Added independent auto-scroll with saved 8–60 px/s speed, a visible Stop control, PDF page advance and bounded EPUB/TXT passage-window advance. Starting it disables voice-follow to avoid competing scroll commands. Touch, wheel/key input, dialogs, book/view changes, privacy withdrawal and hidden app state stop it. Added Paper/Sepia/Sage/Dark choices and PDF page tints; the UI discloses that PDF tints affect images. Wallpaper remains deferred for a separate user choice.
+
+TypeScript/Vite production compilation and Android v1.6 (code 11) debug packaging succeeded. Reviewed the actual updated PDF layout and Appearance dialog in the local browser. No new automated tests were added or run for these changes. Physical two-finger gestures and sustained auto-scroll still need a device trial; no phone was connected for installation. Earlier 24 checks describe the preceding large-book session, not validation of these new gestures.
+
 ## Large-book checks — 27 October 2026
 
 The user authorized high-volume book testing in the open local browser. That browser's library was empty. Clicking Add books opened the unaccepted privacy/agreement dialog rather than a file chooser. The user reviewed and accepted it personally, then confirmed completion; no agreement was accepted or bypassed by the agent. Both the generated TXT and public reference PDF were imported through the file chooser and persisted across a reload.
