@@ -26,7 +26,7 @@ final class GoalsUi {
                 LinearLayout list=ui.column();ui.label(list,"Tap a session to open its day, adjust it or mark it complete.");
                 if(sessions.isEmpty())ui.label(list,"No saved sessions remain. Removed sessions are not counted as completed.");
                 AlertDialog detail=new AlertDialog.Builder(a).setTitle(goal.title).setView(ui.scroll(list)).setNegativeButton("Close",null).create();
-                for(Task t:sessions)ui.button(list,(t.done?"Done · ":"")+t.date+" · "+(t.time.isEmpty()?"Anytime":t.time)+" · "+t.title,v->{detail.dismiss();dialog.dismiss();openDay.accept(LocalDate.parse(t.date));});
+                for(Task t:sessions)ui.button(list,(t.done?"Done · ":"")+t.date+" · "+(t.time.isEmpty()?"Anytime":t.time)+" · "+t.title,clicked->{detail.dismiss();dialog.dismiss();openDay.accept(LocalDate.parse(t.date));});
                 detail.show();
             });
         }
