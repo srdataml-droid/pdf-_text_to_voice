@@ -1,0 +1,89 @@
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { extname, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
+const host = '127.0.0.1';
+const port = Number(process.env.PORT ?? 4173);
+const types = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.npz': 'application/octet-stream',
+  '.onnx': 'application/octet-stream',
+  '.wasm': 'application/wasm',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.avif': 'image/avif',
+  '.ttf': 'font/ttf',
+  '.woff2': 'font/woff2',
+};
+
+if (!existsSync(root)) {
+  console.error('Build the app first with npm run build.');
+  process.exit(1);
+}
+
+const server = createServer((request, response) => {
+  if (request.url === '/_reader/health') {
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    response.end(JSON.stringify({ app: 'novaxis-reader', pid: process.pid }));
+    return;
+  }
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(request.url ?? '/', 'http://127.0.0.1').pathname);
+  } catch {
+    response.writeHead(400).end('Invalid path');
+    return;
+  }
+
+  let file = resolve(root, '.' + pathname);
+  if (!file.startsWith(root + sep) && file !== root) {
+    response.writeHead(403).end('Forbidden');
+    return;
+  }
+  if (existsSync(file) && statSync(file).isDirectory()) file = resolve(file, 'index.html');
+  if (!existsSync(file)) {
+    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Local file not found');
+    return;
+  }
+  if (!file.startsWith(root + sep) && file !== resolve(root, 'index.html')) {
+    response.writeHead(404).end('Not found');
+    return;
+  }
+
+  response.writeHead(200, {
+    'Content-Type': types[extname(file)] ?? 'application/octet-stream',
+    'Content-Length': statSync(file).size,
+    'Cross-Origin-Resource-Policy': 'same-origin',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "default-src 'self' blob: data:; connect-src 'self' blob:; img-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; object-src 'none'; base-uri 'self'",
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Embedder-Policy': 'require-corp',
+  });
+  if (request.method === 'HEAD') { response.end(); return; }
+  createReadStream(file).on('error', () => response.destroy()).pipe(response);
+});
+
+server.on('error', error => {
+  console.error('Could not start the local reader:', error.message);
+  process.exitCode = 1;
+});
+
+server.listen(port, host, () => {
+  console.log('Novaxis Reader is available at http://' + host + ':' + port);
+  console.log('This server accepts connections from this laptop only.');
+});
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => server.close(() => process.exit(0)));
+}

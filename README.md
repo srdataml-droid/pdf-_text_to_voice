@@ -1,1 +1,117 @@
-# pdf-_text_to_voice
+# Novaxis Reader
+
+A private, local-first reader for PDF, EPUB, and plain-text books. Read along with Piper, Kokoro, or Kitten Nano voices installed on your own device. The laptop version runs on your computer; the Android version packages the same reader and speech assets.
+
+## What it does
+
+- Imports selectable-text PDF, non-DRM EPUB, and UTF-8 TXT files.
+- Adds one book or several books from the same picker, with per-file results, retry for files not added, and a stop control between file copies.
+- Selects books on the shelf for bulk removal, or removes one book at a time. Book copies and their saved positions are removed together; source files are untouched.
+- Shows PDF pages with their original layout, images, page controls, and zoom. Tap a text line to read; all lines of the current spoken passage are highlighted.
+- Reads one passage at a time and prepares the next two local audio clips during playback.
+- Lets you select a speech model first, then a voice available in that model.
+- Stores books and reading position in local IndexedDB storage.
+- Keeps playback running as you move between the library, voices and storage screens.
+- Provides searchable and sortable bookshelves, real EPUB covers and author metadata, a resume card, chapter navigation, and a compact or expanded player.
+- Preserves EPUB and TXT paragraph grouping, with a bounded reading window of 80 speech passages to limit the rendered page size.
+- Saves paper/dark theme, reading font size, line spacing and width on the device. Follow voice can be switched off to browse while listening.
+- Shows measured bundled voice-file sizes and manages imported Piper voices in Local storage.
+- Exports and imports a local library backup to move books and progress between devices. Speech models are installed separately.
+- Runs without a network connection after setup. Reading, playback, file parsing, progress, and backups do not use a server or online service.
+
+Scanned PDFs without a selectable text layer can be viewed but cannot be narrated. DRM-protected books are not supported. See [supported formats](docs/supported-formats.md).
+
+## Laptop setup
+
+Use Node.js 22 or newer. From this folder:
+
+    npm install
+    npm run models:prepare
+    npm run build
+    npm start
+
+Open the local address printed by the launcher. It binds to 127.0.0.1 only. The launcher starts a separate local process, so closing the launcher does not stop reading. Run it again after restarting your computer; repeated starts reuse the reader already running. `models:prepare` uses existing packs when available, copies models from `../../outputs/voice-models` if supplied, and downloads missing model files once during setup. It verifies the supported weights by checksum. You can point VOICE_MODEL_SOURCE at a different local model folder. The speech assets are large and are intentionally excluded from Git. Keep a copy of the prepared `public/voice-packs` folder if you want to move the exact same packs to another computer without downloading them again.
+
+Once prepared, the app itself does not fetch models, voices, fonts, books, or other assets from the internet. The repository does not include model weights; review each model and voice license before redistributing them.
+
+## Portable laptop package
+
+Run `npm run package:portable` to create `artifacts/novaxis-reader-portable.zip` with all prepared speech assets. Extract the archive on another computer, install Node.js 22 or newer once, and open `start-reader.cmd` on Windows or run `sh start-reader.sh` on Linux/macOS. Open http://127.0.0.1:4173 in a browser. No package installation or model download is needed for this prepared bundle.
+
+## Android setup
+
+Install Android Studio with the Android SDK and JDK 21. Set ANDROID_HOME to your SDK folder. With the model assets prepared as above and Python 3 installed, build a debug APK:
+
+    npm run android:apk
+
+The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. Install it on your Android device. The APK already contains the prepared model packs. The build preparation step downloads pinned native sherpa-onnx 1.13.8 and its Piper Lessac pack once, verifies their SHA-256 hashes, and caches them under `../build-tools/native-tts`. Subsequent builds reuse that cache. Copy the cache and web model folders to build offline. See [native voice sources](docs/native-piper.md). Keep a copy of the APK in your own storage. Android stores books and progress inside the app; use the reader's backup and restore controls to transfer your library. The package does not need Android Internet permission.
+
+The phone build is version 1.7 (version code 12). Install it as an update over the previous Novaxis Reader build from this machine to keep its private library; the package ID and local database remain the same. **Add books** supports a single file or multiple PDF/EPUB/TXT files. **Select books** enables checkboxes, **Select shown** acts on the current search/filter, and **Delete selected** reviews the chosen count before removal. Hidden selections are counted explicitly when a filter changes.
+
+PDF reading preserves the original page on a neutral surround, with fit-width, fit-page, 75–300% zoom and rotation. Rendering follows device pixel density up to 3×, bounded to approximately six million pixels and a 4096-pixel maximum canvas edge. High zoom can therefore trade sharpness for bounded memory. Focus hides the app navigation while leaving reading controls available. Show text expands the optional spoken-passage caption. These controls work locally; they do not embed Chrome, add OCR or provide a selectable PDF text layer.
+
+Piper Lessac is the default voice, including a one-time reset to Piper when upgrading to 1.2. Later model and voice choices are remembered normally. The reading view has a live passage panel, narration status, and a book-position indicator. Speech cleans invisible extraction characters and compatibility ligatures without changing the book or saved positions.
+
+Narration schedules up to three short decoded passages on one Web Audio timeline. It continues across PDF pages and EPUB chapters; choosing a contents entry while listening starts reading there. Pause suspends the audio clock, keeping the precise in-session position for Resume. Saved positions after closing remain passage-based. Already queued passages finish at their original speed when the speed setting changes. If generation is slower than playback, the app shows that it is preparing the next passage; zero waiting time on every device or voice is not guaranteed. Android keeps the screen awake for voices using the foreground web player and releases that flag when paused or stopped. On Android 1.4.2, bundled Piper Lessac instead runs in a native foreground media service with a bounded three-passage PCM queue, audio focus, headphone-disconnect pause, playback controls and a CPU wake lock. It generates upcoming speech without relying on the WebView or a lit screen. Native passage progress is saved privately even while the reading screen is suspended. The native narration plan is transferred in batches of at most 128 passages and read from private files one passage at a time. A normal speech-generation exception gets one fresh-engine retry; already prepared speech drains before a persistent generation failure is reported. Two minutes without generated audio or forward playback triggers a saved-place error instead of leaving the player waiting indefinitely. This watchdog can cancel the session but cannot forcibly recover a native runtime that never returns. Initial plan preparation needs the app open; the display stays awake until the native player starts. Other voices and imported Piper packs still need the foreground reader; background playback for those is not implemented. Delays remain possible if local speech generation cannot keep up. Android force-stop, process termination, a phone restart or restrictive manufacturer battery settings can interrupt playback; no automatic restart is promised.
+
+Local storage shows the phone's internal-volume free/total space and an estimate of private app data. This estimate excludes cache files and packaged APK assets; a partial scan is labelled as a lower bound. Logical book/cover sizes and bundled voice-file sizes are shown separately, so they are not added to the app-data estimate twice. Browser storage allowance is separately labelled and is not device free space.
+
+Books are copied into this app's private storage, rather than a shared public folder. Back up the library to keep an independent copy in a location you choose. The Android storage-settings button opens the app's settings screen; clearing data or uninstalling there removes the private library. The reader does not request broad file access or add Internet permission.
+
+## Privacy, agreement and file access
+
+The offline privacy notice, personal-use agreement and permissions guide are bundled in the app under **Local storage → Read policies & manage agreement**. The publisher is **Irenikase Samuel Temitope**. No support email is configured; the notice directs preview users to the channel through which the app was shared. The policy content and version are maintained in `src/privacy/privacy-controls.ts`.
+
+The first-use sheet has two unchecked boxes and requires an explicit **Accept and continue** choice before new imports, backup restore or narration. **Not now** keeps the existing library, manual reading, deletion and backup export available. Acceptance records only the policy version, a device timestamp and the two acknowledgements in local browser/app storage; it is excluded from library backups. Updates to the policy version require a new choice. **Withdraw agreement** pauses narration and gates future imports and playback without deleting books. If local choice storage fails, the app labels the choice as session-only. Browser tabs respond to changes to the agreement record within the same storage origin.
+
+Book import, Piper voice import, restore and backup export have cancellable explanations before the chooser or download action. The optional remembered explanation only skips that app explanation; file selection still happens each time. Reset explanations on the policy screen. The reader requests no broad storage, microphone, camera, contacts, location or Internet access. Android bundled Piper uses normal foreground-media and CPU-wake permissions and media controls, without asking for general notification permission. Android's document picker controls the specific files selected, and backups use its save-document flow. The notices explain that cloud providers selected in the system picker can use their own network services, and reader backups are unencrypted. These notices describe the local personal preview; no public store privacy URL or online service is introduced.
+
+## Model storage
+
+The app includes model selection for Piper Lessac, Kokoro, and Kitten Nano. Voice choices appear after selecting a model. Preview a voice, then choose Use this voice to apply it to narration. Previewing pauses book narration and releases its engine before loading the preview engine. In Local storage, use Import a Piper voice and select a matching .onnx and .onnx.json file together. Extra voice packs are stored on that device and are excluded from library backups. Bundled voices remain part of the app package. The model files live under `public/voice-packs` during local development and are copied into the Android package when building. They are large local assets and are not committed to this source repository.
+
+For a new computer, you can transfer `public/voice-packs` from an existing prepared installation. Alternatively, run `npm run models:prepare` while online once to retrieve the missing supported files. Keep a separate backup of the model pack; library backups intentionally do not include it.
+
+## Reading controls and voices — 1.7
+
+The reader uses a slim top bar with Back, title, Contents and a reading-options menu. The reading view hides the app navigation and uses one bottom player. Original PDF page rendering, zoom/rotation and following the spoken passage remain available; Focus also hides the PDF toolbar. Spoken-text captions are optional in the reading menu. Speed has visible minus/plus controls in 0.25 increments, from 0.75× to 2×; queued audio finishes at its previous speed.
+
+Use the expand icon beside Contents for more page space. PDF pages fill the available width and height above the player. Pinch with two fingers to zoom PDFs (25–400%) or adjust EPUB/TXT type (16–40 px); a laptop trackpad pinch / Ctrl+wheel uses the same document zoom. One-finger movement remains ordinary scrolling. PDF redraws after a pinch, keeping the gesture point anchored and retaining the existing canvas memory cap.
+
+In the reading menu, Start auto-scroll moves the page independently of narration; this switches Follow voice off to prevent competing movement. Stop from the floating control, touch/scroll the page, leave the reader or open a dialog. Choose its 8–60 px/s pace in Aa Appearance. PDFs advance at the bottom of the page; EPUB/TXT continue through their next bounded passage window. Auto-scroll pauses when the app is hidden and must be restarted deliberately. Paper, Sepia, Sage and Dark are available in Appearance; PDF tints also affect images, while Paper preserves original colours. Appearance also includes Dunes, Forest mist, Moonlit lake and Linen backgrounds, plus Plain. Add your image accepts JPG/PNG/WebP up to 12 MB and 32 megapixels, saves one resized copy (maximum 1600-pixel edge / 2 MB) in separate device-local image storage, and keeps your original untouched. A new custom image replaces the previous saved copy. You can switch between built-ins and your saved image, or remove the local copy after reviewing the confirmation. Images are re-encoded without original metadata and excluded from library backups. PDF pages remain opaque; wallpaper frames their edges. EPUB/TXT words sit on solid paper for contrast. No background requires a network connection.
+
+The main voice picker offers Lessac, Heart, George, Luna and Jasper by name. Tap a featured name to generate “Hi, I'm [name].” locally, then choose Use this voice. Model names and the full voice lists remain under All voices & technical details. Lessac supports Android screen-off narration; the other featured voices require the reader open. Library/voice preferences remain compatible and all runtime assets stay offline.
+
+## Long books and reliability
+
+EPUB extraction releases each chapter document before loading the next. The reading interface still retains the complete extracted passage list and the source archive during opening; opening very large books is not fully streamed. Chapter count alone does not determine memory use or guarantee support. The Android narration plan allows up to 1,000,000 passages and 256 MiB of encoded passage data, plus its disk index; sufficient free app storage is required. Those are safety ceilings, not phone performance guarantees. No whole-book audio is retained.
+
+Run `npm run check:reader-reliability` with Node.js, Python 3, JDK 21 and the cached Kotlin 2.1.20 stdlib (build Android once, or set `KOTLIN_STDLIB_JAR`) to run synthetic native-plan/retry/watchdog checks, bridge cancellation checks, EPUB document-retention checks and simulated Web Audio playback checks. A separate Android instrumentation smoke test generates three synthetic passages through the real native Piper callback; it passed on the connected phone for 1.4.2. Build it with `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest` in the Android folder and run `com.novaxis.localreader.PiperNativeSmokeTest` with AndroidJUnitRunner. These checks do not replace sustained physical-phone listening with the display off. See [verification notes](docs/verification.md).
+
+## Development
+
+- `npm run dev` starts the Vite development server on loopback.
+- `npm run build` checks the TypeScript project, verifies prepared assets, and creates the local production build in `dist`.
+- `npm start` starts the built reader as a separate local process.
+- `npm run serve` serves the built application in the current terminal; it stops when that terminal closes.
+- `npm run android:sync` builds the web app and copies it into the Android project.
+
+The Android project is generated by Capacitor. If it is absent after cloning, run `npm run android:add` before building.
+
+## Privacy and ownership
+
+Your books, progress, voice assets, and generated speech stay on your device. The app does not use accounts, cloud storage, telemetry, or online speech generation. To move your library, use an exported backup under your control. To move speech voices, copy the separate model pack yourself.
+
+## Design implementation
+
+The October redesign implements the Figma library's paper, green and amber visual language with bundled Inter/Lora fonts and exported local icons. Reader, voice, storage, appearance and recovery screens use that shared design system. Additional detailed Figma exports were unavailable at the tool quota, so those screens are adapted functional layouts. See the [implementation ledger](docs/superpowers/plans/2026-10-13-reader-redesign.md).
+
+Library backups remain compatible with version-one archives and now include optional cover images as separate ZIP entries. Imported books are parsed when opened, rather than parsing every book to draw the library. PDF extraction joins wrapped lines into bounded speech passages and skips only conservative repeated margins. Complex PDF reading order can still need adjustment. Older PDF positions are mapped from the former line-based parser when first opened in the new reader.
+
+## Voice sources
+
+- [Piper Lessac model card](https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/lessac/medium/MODEL_CARD) and its linked dataset license. This experimental personal-use voice pack has not been cleared for a commercial release.
+- [Kokoro ONNX](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX), Apache 2.0. The pinned browser adapter supports its 28 English voices.
+- [Kitten Nano int8](https://huggingface.co/KittenML/kitten-tts-nano-0.8-int8), Apache 2.0.
+
+Before a Play Store release, choose packs with suitable redistribution terms and create a release signing key. The debug APK is for local auditioning. Android hardware and 4 GB Windows performance have not been verified; see [verification notes](docs/verification.md).
