@@ -1,6 +1,8 @@
-# Anchor 0.4.0 — offline Android personal planner
+# Anchor 0.5.0 — offline Android personal planner
 
 Native Android app for HONOR Magic4 Lite 5G, Android 8+ / arm64. No account, Internet permission, Google Calendar, server, analytics or cloud backup. App-private SQLite holds calendar/tasks, explicit memories and chat.
+
+The source now includes the goals timeline. Personal routine presets have been removed; fresh installations begin with an empty calendar. See [current source status](SOURCE-STATUS.md) for this update’s validation and release limits.
 
 ## What works
 - Today timeline, own month calendar, add/edit/delete/check tasks and protected events.

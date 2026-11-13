@@ -30,7 +30,7 @@ public final class RoutinePlanner {
         for(int i=0;i<r.days;i++) {
             LocalDate date=first.plusDays(i);
             if((r.weekdays & (1<<(date.getDayOfWeek().getValue()-1)))==0)continue;
-            Task t=new Task();t.title="Rotating study".equals(r.title)?PersonalRoutine.subjectFor(date)+" · rotating study":r.title;t.date=date.toString();t.durationMinutes=r.durationMinutes;
+            Task t=new Task();t.title=r.title;t.date=date.toString();t.durationMinutes=r.durationMinutes;
             t.flexible=true;t.reminderMinutes=r.reminderMinutes;DateRules.validate(t);
             List<int[]> blocks=new ArrayList<>();int used=0;
             for(Task old:existing) {

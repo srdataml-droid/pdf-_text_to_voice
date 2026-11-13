@@ -1,0 +1,8 @@
+{
+  "on_device_recognition_available": true,
+  "tts_initialized": true,
+  "installed_offline_english_voices": 18,
+  "microphone_opened": false,
+  "speech_transcription_tested": false,
+  "audible_tts_tested": false
+}
