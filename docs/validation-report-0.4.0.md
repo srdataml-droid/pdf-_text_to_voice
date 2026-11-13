@@ -1,0 +1,36 @@
+# Anchor 0.4.0 — reviewed period plans and session moves
+
+Prepared 29 October 2026. Personal development build for HONOR Magic4 Lite 5G, ANY-NX1, Android13/API33, arm64. The final APK is packaged for installation; an earlier 0.4.0 build was installed during testing. Final fixes were not installed after USB disconnected. The user chose to finish computer checks for now.
+
+## New behaviour
+
+Today → Period plans · daily & challenges → New plan opens a single editor for 1–12 definitions and an inclusive 1–90-day range. November1–December31,2026 spans 61 days; the existing consistency view remains 60 days. Editable templates include daily rest, self-development/countries/health reading, library organisation, hackathon work, research and optional dishes/sweeping/laundry/mopping. Durations and weekday patterns are suggestions, not agreed personal commitments. Occasional events need explicit dates. No personal routine was seeded.
+
+Daily essentials receive room first, then challenges. All definitions share gap occupancy and the flexible allocation budget; existing slots stay protected. Preview shows each definition’s session count, no-room count and every proposed date/time on request. No-room entries become visible Anytime tasks with reminder intent retained. Save checks the original calendar revision, current planning settings and elapsed preview times; the complete batch and audit are written atomically. The plan history has guarded Undo that refuses subsequent calendar changes/completions. Individual sessions and stop-future-routine controls remain available.
+
+Explicit chat list requests open this editor. A strict internal model proposal accepts only titles, categories, minutes and weekday masks. It never writes the calendar. Complete inputs beyond the small planning context bypass inference rather than sending a truncated prefix. Recoverable load/generation/parser errors use deterministic editable list suggestions. The complete original request remains editable for comparison/correction. Stop suppresses both model and fallback drafts. Removing a composer row frees capacity for its replacement. Simple comma/minute lists retain their activity and duration together.
+
+Move/reschedule requests open a picker for a specific upcoming session and a date/time review. They never silently pick a recurring occurrence. Only unfinished flexible tasks can move through this tool. Protected tasks/events, collisions, stale task versions and past placements are rejected. Successful moves have durable change reports and existing Undo. The session remains flexible afterward, as shown in the review. `/plans` returns saved summaries and active routine details. Existing direct single-task chat creation remains available.
+
+## Completed checks
+
+- Final computer suite: **78 tests passed**, no failures/errors/skips. Includes shared 61-day period planning, allocation/protected slots, input bounds, snapshot isolation, move parsing, full-list fallback, recoverable inference errors, cancellation and comma/duration regression cases, alongside existing planner/alarm/progress tests.
+- Final app and instrumentation APK builds succeeded. Android lint: **0 errors, 53 warnings**. Warnings include preference writes, native-view text/localisation, dependency/platform, drawing allocation and existing compatibility categories.
+- Independent static review found three issues: truncated long inputs, missing fallback on inference failure, and no removal from a full composer. All were fixed; the reviewer confirmed no new blocker in those fixes. Transaction/Undo/migration/collision paths were also inspected. Final whitespace/diff check passed.
+- On the HONOR, an earlier 0.4.0 regression run executed **61 cases: 60 passed, one fixture error**. Passing new cases covered durable/idempotent batch save, guarded batch Undo, stale settings/calendar, whole-batch rollback, expired previews, strict model proposal parsing and flexible session move/Undo/conflict/protection checks. Existing routine/chat/schema/observer/alarm/progress checks also passed in that run.
+- The failing v4→v5 migration case attempted `ALTER TABLE ... DROP COLUMN` while constructing old test data, unsupported by the phone’s SQLite. The fixture now reconstructs the genuine v4 tables instead. It compiles; **the corrected migration test has not been rerun on Android**. This is not a claim that the complete device suite passes.
+- The native wrapper was rebuilt against the same pinned llama.cpp commit d05706b4f32a545814856e98ca518292585443b9, CPU arm64 with dotprod. Its output clamp now permits 384 planning tokens; normal chat still requests192. Context stays1024 and reserves output space before generation. APK/source native hashes and development signing are checked in the release manifest.
+
+## Unresolved phone validation
+
+The opt-in, synthetic three-activity LFM3 planning check returned **“Process crashed.”** USB then became unavailable; the phone was absent from the host USB inventory. There is no captured Android exit-info or crash log establishing the cause. Do not attribute it to memory, model output or the native wrapper without evidence. The deterministic fallback can recover Java/native exceptions returned to Java, but **cannot recover an OS/native process termination**.
+
+Final fallback/removal/list parsing fixes and the final period/move screens have not been exercised on the phone. No new successful model quality/speed/memory result exists for this workflow. Earlier three-model comparisons and offline generation evidence belong to0.2.0; they do not validate this new384-token planning path. Next device work: capture exit-info/logcat, investigate the crash, rerun the corrected migration and full regression suite, exercise full composer row removal and original-source preservation, then complete actual model extraction. Do not run model tests simultaneously with other instrumentation.
+
+## Existing behaviour and limits
+
+Anchor has its own calendar; it does not sync to other phone calendar apps. Native notifications, ringing opt-in, snooze and the bounded200-reminder queue remain independent of inference. Timed sessions use existing notification/ringing settings. Force stop blocks delivery until reopen; Android/HONOR power management can delay periodic checks. The prior0.3.0 real-alarm ringing/snooze/dismiss check remains historical evidence; it was not repeated for this build.
+
+The recovered Java framework/SQLite app is retained. Kotlin/Compose, Room/DataStore and sherpa-onnx are not implemented. Voice still uses installed Android offline recognition/TTS; microphone transcription and audible TTS quality were not evaluated. Unsaved period/move dialogs do not yet survive activity recreation. Whole-series edits use stop-and-create. Arbitrary conversation planning, automatic book chapter division, dated-event invention, always-on LLM and continuous observation/inference are not claimed. No multi-day Doze/reboot/thermal or90-day real-time soak was performed.
+
+The app adds no Internet or calendar-provider permission. Model weights are separate. The source/APK/test evidence contains no private chat database, personal memory notes or audio. Earlier delivered versions are preserved.

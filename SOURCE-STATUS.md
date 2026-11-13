@@ -1,0 +1,1 @@
+Source snapshot: APK build and device testing pending. Native libraries, Gradle wrapper JAR, model weights and signing keys excluded. Use Gradle 8.14.3 and rebuild JNI with scripts/build-native.sh.

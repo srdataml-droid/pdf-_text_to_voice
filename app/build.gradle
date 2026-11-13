@@ -1,0 +1,36 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'dev.anchor.app'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'dev.anchor.app'
+        minSdk 26
+        targetSdk 36
+        versionCode 6
+        versionName '0.5.0'
+        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes { release { minifyEnabled false } }
+    packaging { jniLibs { useLegacyPackaging = false } }
+    useLibrary 'android.test.runner'
+    useLibrary 'android.test.base'
+
+    packagingOptions {
+        pickFirst 'META-INF/services/org.apache.pdfbox.io.RandomAccessRead'
+        pickFirst 'META-INF/services/org.apache.pdfbox.io.RandomAccessWrite'
+        pickFirst 'META-INF/services/org.apache.pdfbox.io.Cache'
+        pickFirst 'module-info.class'
+        pickFirst 'org/apache/pdfbox/util/PDFOperator.class'
+        pickFirst 'org/apache/pdfbox/cos/COSName.class'
+        pickFirst 'org/apache/pdfbox/pdmodel/PDDocument.class'
+    }
+}
+
+dependencies {
+    implementation 'androidx.work:work-runtime:2.11.2'
+    implementation 'com.itextpdf:itext7-core:7.2.5'
+    testImplementation 'junit:junit:4.13.2'
+}
